@@ -5210,6 +5210,11 @@
 
         document.getElementById("timelineViewOverlay").classList.add("active");
         history.pushState({ tlView: true }, "");
+
+        // 이미지 변경 버튼 이벤트 위임
+        const tvBody = document.getElementById("tvBody");
+        tvBody.removeEventListener("click", _tvImgBtnDelegate);
+        tvBody.addEventListener("click", _tvImgBtnDelegate);
     }
 
     function renderTvDateDropdown(cityName) {
@@ -5320,7 +5325,7 @@
         if (resultWrap) resultWrap.style.display = 'none';
 
         document.getElementById('tvImgEditModal').classList.add('active');
-        // DOMTokenList.prototype.add 오버라이드가 pushState를 이미 처리하므로 중복 호출 제거
+        // DOMTokenList.prototype.add 오버라이드가 pushState를 이미 처리함
 
         // 검색 탭이 기본이므로 자동완성 즉시 초기화
         setTimeout(initImgSearchAutocomplete, 200);
@@ -5354,6 +5359,8 @@
     let _tvImgSearchAcService = null;
     let _tvImgSearchAcDropdown = null;
     let _tvImgSearchAcDebounce = null;
+    let _tvImgCurrentKey  = null;
+    let _tvImgCurrentCard = null;
 
     function initTvImgSearchAutocomplete() {
         const input = document.getElementById('tvImgSearchInput');
@@ -5430,9 +5437,7 @@
         });
     }
 
-    let _tvImgSelectedUrl  = ''; // 현재 선택된 URL (검색/업로드/URL 공통)
-    let _tvImgCurrentKey   = null; // 현재 편집 중인 이미지 키
-    let _tvImgCurrentCard  = null; // 현재 편집 중인 카드 DOM
+    let _tvImgSelectedUrl = ''; // 현재 선택된 URL (검색/업로드/URL 공통)
 
     async function tvImgSearchUnsplash() {
         // cloneNode 후에도 id가 같으므로 querySelector로 안전하게 참조
@@ -5568,6 +5573,8 @@
                     _tvImgSelectedUrl = '';
                 }
             });
+        }
+    });
 
     // ── Unsplash 검색창 자동완성 (body 직접 append 방식) ──
     let _imgAcService  = null;
@@ -5680,8 +5687,6 @@
         document.addEventListener('click', outsideClick);
         document.addEventListener('touchstart', outsideClick, {passive:true});
     }
-        }
-    });
 
     function closeTimelineView() {
         document.getElementById("timelineViewOverlay").classList.remove("active");
@@ -5759,12 +5764,15 @@
             // 번호 뱃지 색상
             let numBadge = `<span style="position:absolute;top:10px;left:10px;background:${cityColor};color:white;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.78rem;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${itemIdx+1}</span>`;
 
+            // 이미지 편집 버튼 (우상단) - data 속성으로 이벤트 위임
+            let imgEditBtn = `<button class="tv-img-edit-btn" data-img-key="${manualImgKey}" data-search="${escapeHtml(searchQuery)}"
+                style="position:absolute;top:8px;right:8px;background:rgba(26,39,68,0.65);border:none;color:white;border-radius:10px;padding:5px 10px;font-size:0.72rem;font-weight:700;cursor:pointer;backdrop-filter:blur(6px);z-index:5;letter-spacing:0.3px;">🖼️ 변경</button>`;
+            
             card.innerHTML = `
                 <div style="position:relative;">
                     ${heroHtml}
                     ${numBadge}
-                    <button class="tv-img-edit-btn" data-img-key="${manualImgKey}" data-search="${escapeHtml(searchQuery)}"
-                        style="position:absolute;top:8px;right:8px;background:rgba(26,39,68,0.65);border:none;color:white;border-radius:10px;padding:5px 10px;font-size:0.72rem;font-weight:700;cursor:pointer;backdrop-filter:blur(6px);z-index:5;letter-spacing:0.3px;touch-action:manipulation;-webkit-tap-highlight-color:rgba(255,255,255,0.3);pointer-events:all;">🖼️ 변경</button>
+                    ${imgEditBtn}
                 </div>
                 <div class="tv-card-body">
                     ${time ? `<div class="tv-card-time">⏰ ${escapeHtml(time)}</div>` : ""}
@@ -5778,27 +5786,6 @@
                     </div>
                 </div>
             `;
-            // 이미지 변경 버튼 - 직접 이벤트 바인딩 (click + touchend 모두 처리)
-            const imgEditBtnEl = card.querySelector('.tv-img-edit-btn');
-            if (imgEditBtnEl) {
-                let _imgBtnTouchMoved = false;
-                imgEditBtnEl.addEventListener('touchstart', (e) => {
-                    _imgBtnTouchMoved = false;
-                }, { passive: true });
-                imgEditBtnEl.addEventListener('touchmove', (e) => {
-                    _imgBtnTouchMoved = true;
-                }, { passive: true });
-                imgEditBtnEl.addEventListener('touchend', (e) => {
-                    if (_imgBtnTouchMoved) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openTvImgEdit(imgEditBtnEl, manualImgKey, searchQuery);
-                });
-                imgEditBtnEl.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    openTvImgEdit(imgEditBtnEl, manualImgKey, searchQuery);
-                });
-            }
             // 카드 바디 탭 → 해당 셀 편집
             card.querySelector('.tv-card-body').addEventListener('click', () => {
                 const date   = day.dateObj;
@@ -6063,6 +6050,23 @@
 
     init();
     
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+
 </script>
 </body>
 </html>
