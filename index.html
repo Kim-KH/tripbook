@@ -6227,21 +6227,28 @@
                 }
             }
 
-            const { data: inserted, error } = await supabaseClient
-                .schema('public')
-                .from('shared_trips')
-                .insert({
+            // REST API 직접 호출 (schema cache 우회)
+            const _insertRes = await fetch(`${SUPABASE_URL}/rest/v1/shared_trips`, {
+                method: 'POST',
+                headers: {
+                    'apikey':        SUPABASE_ANON,
+                    'Authorization': `Bearer ${(await supabaseClient.auth.getSession()).data.session.access_token}`,
+                    'Content-Type':  'application/json',
+                    'Prefer':        'return=representation'
+                },
+                body: JSON.stringify({
                     trip_id:  tripMeta.id,
                     owner_id: supabaseUser.id,
                     title:    tripMeta.name || '여행 계획',
                     data:     shareData
                 })
-                .select('id')
-                .single();
-
-            if (error) throw error;
-
-            const shareId = inserted.id;
+            });
+            if (!_insertRes.ok) {
+                const _errBody = await _insertRes.text();
+                throw new Error(_errBody);
+            }
+            const _inserted = await _insertRes.json();
+            const shareId = Array.isArray(_inserted) ? _inserted[0].id : _inserted.id;
             const shareUrl = `${location.origin}${location.pathname}?share=${shareId}`;
             document.getElementById('shareLinkInput').value = shareUrl;
             document.getElementById('shareLinkWrap').style.display = 'block';
@@ -6280,12 +6287,14 @@
         if (!shareId || !supabaseClient) return false;
 
         try {
-            const { data, error } = await supabaseClient
-                .schema('public')
-                .from('shared_trips')
-                .select('title, data')
-                .eq('id', shareId)
-                .single();
+            // REST API 직접 호출 (schema cache 우회)
+            const _selRes = await fetch(
+                `${SUPABASE_URL}/rest/v1/shared_trips?id=eq.${shareId}&select=title,data`,
+                { headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` } }
+            );
+            const _selArr = await _selRes.json();
+            const data  = (_selArr && _selArr[0]) ? _selArr[0] : null;
+            const error = (!data) ? { message: '데이터 없음' } : null;
             if (error || !data) {
                 tpToast('공유된 여행을 찾을 수 없습니다.', 'warning'); return false;
             }
