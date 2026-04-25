@@ -5277,12 +5277,6 @@
             btn.style.color        = active ? 'var(--navy)' : 'var(--text-sub)';
             btn.style.boxShadow    = active ? '0 1px 4px rgba(0,0,0,0.1)' : 'none';
         });
-        // 검색 탭 전환 시 자동완성 재초기화
-        if (tab === 'search') {
-            setTimeout(initImgSearchAutocomplete, 100);
-        } else if (_imgAcDropdown) {
-            _imgAcDropdown.style.display = 'none';
-        }
     }
 
     function openTvImgEdit(btn, imgKey, searchQuery) {
@@ -5320,8 +5314,8 @@
         document.getElementById('tvImgEditModal').classList.add('active');
         history.pushState({ tvImgEdit: true }, '');
 
-        // 검색 탭이 기본이므로 자동완성 즉시 초기화
-        setTimeout(initImgSearchAutocomplete, 200);
+        // 검색창 자동완성 초기화 (한 번만)
+        setTimeout(initImgSearchAutocomplete, 150);
 
         // 파일 업로드 핸들러 (중복 방지)
         const fileInput = document.getElementById('tvImgFileInput');
@@ -5520,7 +5514,6 @@
         _tvImgSelectedUrl = '';
         const fileInput = document.getElementById('tvImgFileInput');
         if (fileInput) fileInput.value = '';
-        if (_imgAcDropdown) _imgAcDropdown.style.display = 'none';
         document.getElementById('tvImgEditModal').classList.remove('active');
         tpToast('✅ 이미지가 변경되었습니다.', 'success');
     }
@@ -5542,7 +5535,6 @@
         _tvImgSelectedUrl = '';
         const fileInput = document.getElementById('tvImgFileInput');
         if (fileInput) fileInput.value = '';
-        if (_imgAcDropdown) _imgAcDropdown.style.display = 'none';
         document.getElementById('tvImgEditModal').classList.remove('active');
         tpToast('이미지가 제거되었습니다.', 'info');
     }
@@ -5565,116 +5557,78 @@
                 }
             });
 
-    // ── Unsplash 검색창 자동완성 (body 직접 append 방식) ──
-    let _imgAcService  = null;
-    let _imgAcDebounce = null;
-    let _imgAcDropdown = null;  // body에 붙는 전역 드롭다운
-
-    function _ensureImgAcDropdown() {
-        // 이미 있으면 재사용
-        let dd = document.getElementById('_imgAcDd');
-        if (!dd) {
-            dd = document.createElement('div');
-            dd.id = '_imgAcDd';
-            dd.style.cssText = [
-                'position:fixed',
-                'background:white',
-                'border:1.5px solid #CBD5E1',
-                'border-radius:14px',
-                'box-shadow:0 8px 28px rgba(26,39,68,0.18)',
-                'z-index:99999',
-                'max-height:220px',
-                'overflow-y:auto',
-                'display:none',
-                'min-width:240px'
-            ].join(';');
-            document.body.appendChild(dd);
-        }
-        _imgAcDropdown = dd;
-        return dd;
-    }
-
-    function _positionImgAcDropdown(input) {
-        if (!_imgAcDropdown) return;
-        const rect = input.getBoundingClientRect();
-        _imgAcDropdown.style.left  = rect.left + 'px';
-        _imgAcDropdown.style.top   = (rect.bottom + 4) + 'px';
-        _imgAcDropdown.style.width = rect.width + 'px';
-    }
+    // ── Unsplash 검색창 Google Places 자동완성 ──
+    let _imgSearchAcService = null;
+    let _imgSearchDebounce  = null;
 
     function initImgSearchAutocomplete() {
         const input = document.getElementById('tvImgSearchInput');
-        if (!input) return;
-        if (!window.google || !google.maps || !google.maps.places) {
-            console.warn('Google Maps Places API 로드 안됨');
-            return;
+        if (!input || _imgSearchAcService) return;
+        if (!window.google || !google.maps || !google.maps.places) return;
+
+        _imgSearchAcService = new google.maps.places.AutocompleteService();
+
+        // 드롭다운 생성
+        let dd = document.getElementById('tvImgSearchDropdown');
+        if (!dd) {
+            dd = document.createElement('div');
+            dd.id = 'tvImgSearchDropdown';
+            dd.style.cssText = [
+                'display:none','position:absolute','top:calc(100% + 3px)',
+                'left:0','right:0','background:white',
+                'border:1.5px solid var(--border)','border-radius:12px',
+                'box-shadow:0 8px 24px rgba(26,39,68,0.14)',
+                'z-index:10000','max-height:210px','overflow-y:auto'
+            ].join(';');
+            input.parentElement.style.position = 'relative';
+            input.parentElement.appendChild(dd);
         }
 
-        // 이전 리스너 제거를 위해 클론 교체
-        const newInput = input.cloneNode(true);
-        input.parentNode.replaceChild(newInput, input);
-        const inp = newInput;
-
-        if (!_imgAcService) {
-            _imgAcService = new google.maps.places.AutocompleteService();
-        }
-
-        const dd = _ensureImgAcDropdown();
-
-        inp.addEventListener('input', () => {
-            clearTimeout(_imgAcDebounce);
-            const q = inp.value.trim();
-            if (!q || q.length < 1) { dd.style.display = 'none'; return; }
-            _imgAcDebounce = setTimeout(() => {
-                _imgAcService.getPlacePredictions(
-                    { input: q, language: 'ko' },
+        input.addEventListener('input', () => {
+            clearTimeout(_imgSearchDebounce);
+            const q = input.value.trim();
+            if (!q || q.length < 2) { dd.style.display = 'none'; return; }
+            _imgSearchDebounce = setTimeout(() => {
+                _imgSearchAcService.getPlacePredictions(
+                    { input: q, language: 'en' },
                     (preds, status) => {
                         dd.innerHTML = '';
-                        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds || preds.length === 0) {
+                        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds) {
                             dd.style.display = 'none'; return;
                         }
-                        preds.slice(0, 6).forEach(pred => {
-                            const row = document.createElement('div');
-                            row.style.cssText = 'padding:11px 14px;cursor:pointer;font-size:0.85rem;border-bottom:1px solid #F8FAFF;display:flex;align-items:flex-start;gap:10px;';
-                            row.innerHTML = `
-                                <span style="color:#94A3B8;flex-shrink:0;margin-top:2px;">📍</span>
+                        preds.slice(0, 5).forEach(pred => {
+                            const div = document.createElement('div');
+                            div.style.cssText = 'padding:10px 14px;cursor:pointer;font-size:0.82rem;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:8px;';
+                            div.innerHTML = `<span style="color:var(--text-muted);flex-shrink:0;">📍</span>
                                 <div>
-                                    <div style="font-weight:700;color:#1A2744;line-height:1.3;">${pred.structured_formatting.main_text}</div>
-                                    <div style="font-size:0.72rem;color:#94A3B8;margin-top:2px;">${pred.structured_formatting.secondary_text || ''}</div>
+                                    <div style="font-weight:700;color:var(--navy);">${pred.structured_formatting.main_text}</div>
+                                    <div style="font-size:0.7rem;color:var(--text-muted);">${pred.structured_formatting.secondary_text||''}</div>
                                 </div>`;
-                            row.addEventListener('mouseenter', () => row.style.background = '#F0F4FF');
-                            row.addEventListener('mouseleave', () => row.style.background = 'white');
-                            row.addEventListener('touchstart', () => row.style.background = '#F0F4FF', {passive:true});
-                            row.addEventListener('touchend',   () => row.style.background = 'white',  {passive:true});
-                            row.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                inp.value = pred.structured_formatting.main_text;
+                            div.addEventListener('mouseenter', ()=> div.style.background='#F0F4FF');
+                            div.addEventListener('mouseleave', ()=> div.style.background='white');
+                            div.addEventListener('touchstart',()=> div.style.background='#F0F4FF',{passive:true});
+                            div.addEventListener('touchend',  ()=> div.style.background='white',  {passive:true});
+                            div.addEventListener('click', () => {
+                                input.value = pred.structured_formatting.main_text;
                                 dd.style.display = 'none';
                                 dd.innerHTML = '';
-                                // 선택 즉시 Unsplash 검색 자동 실행
+                                // 선택 즉시 Unsplash 검색 실행
                                 tvImgSearchUnsplash();
                             });
-                            dd.appendChild(row);
+                            dd.appendChild(div);
                         });
-                        _positionImgAcDropdown(inp);
                         dd.style.display = 'block';
                     }
                 );
-            }, 250);
-        });
-
-        inp.addEventListener('focus', () => {
-            if (inp.value.trim()) _positionImgAcDropdown(inp);
+            }, 300);
         });
 
         // 외부 클릭 시 닫기
-        const outsideClick = (e) => {
-            if (!inp.contains(e.target) && !dd.contains(e.target)) {
+        document.addEventListener('click', (e) => {
+            if (dd && !input.contains(e.target) && !dd.contains(e.target)) {
                 dd.style.display = 'none';
             }
-        };
-        document.addEventListener('click', outsideClick);
-        document.addEventListener('touchstart', outsideClick, {passive:true});
+        });
     }
         }
     });
