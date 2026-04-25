@@ -5277,12 +5277,11 @@
             btn.style.color        = active ? 'var(--navy)' : 'var(--text-sub)';
             btn.style.boxShadow    = active ? '0 1px 4px rgba(0,0,0,0.1)' : 'none';
         });
+        // 검색 탭 전환 시 자동완성 재초기화
         if (tab === 'search') {
-            const inp = document.getElementById('tvImgSearchInput');
-            if (inp) delete inp.dataset.acReady;
-            setTimeout(setupImgSearchAutocomplete, 80);
-        } else {
-            _closeImgAcDd();
+            setTimeout(initImgSearchAutocomplete, 100);
+        } else if (_imgAcDropdown) {
+            _imgAcDropdown.style.display = 'none';
         }
     }
 
@@ -5321,8 +5320,8 @@
         document.getElementById('tvImgEditModal').classList.add('active');
         history.pushState({ tvImgEdit: true }, '');
 
-        // 검색창 자동완성 초기화 (검색 탭 기본)
-        setTimeout(setupImgSearchAutocomplete, 100);
+        // 검색 탭이 기본이므로 자동완성 즉시 초기화
+        setTimeout(initImgSearchAutocomplete, 200);
 
         // 파일 업로드 핸들러 (중복 방지)
         const fileInput = document.getElementById('tvImgFileInput');
@@ -5345,109 +5344,91 @@
             };
         }
 
+        // 검색창 자동완성 (Google Places) - 한 번만 초기화
+        initTvImgSearchAutocomplete();
     }
 
-    let _tvImgSelectedUrl = ''; // 현재 선택된 URL (검색/업로드/URL 공통)
-    // ═══════════════════════════════════════════════════════════
-    //  이미지 검색창 장소 자동완성 (단일 통합 버전)
-    // ═══════════════════════════════════════════════════════════
-    let _imgPlacesAc = null;   // AutocompleteService 인스턴스
-    let _imgAcTimer  = null;   // debounce 타이머
-    let _imgAcDd     = null;   // body 레벨 드롭다운
+    // Unsplash 검색창에 Places 자동완성 연결
+    let _tvImgSearchAcService = null;
+    let _tvImgSearchAcDropdown = null;
+    let _tvImgSearchAcDebounce = null;
 
-    function setupImgSearchAutocomplete() {
+    function initTvImgSearchAutocomplete() {
         const input = document.getElementById('tvImgSearchInput');
         if (!input) return;
 
-        // 이미 리스너 등록된 경우 스킵 (data 속성으로 표시)
-        if (input.dataset.acReady === '1') return;
-        input.dataset.acReady = '1';
+        // 기존 이벤트 초기화
+        const newInput = input.cloneNode(true);
+        input.parentNode.replaceChild(newInput, input);
 
-        // Google Places API 없으면 종료
-        if (!window.google || !google.maps || !google.maps.places) return;
+        // 드롭다운 생성 (없으면)
+        let dd = document.getElementById('tvImgSearchAcDropdown');
+        if (!dd) {
+            dd = document.createElement('div');
+            dd.id = 'tvImgSearchAcDropdown';
+            dd.style.cssText = `display:none; position:absolute; top:calc(100% + 4px); left:0; right:0;
+                background:white; border:1px solid var(--border); border-radius:12px;
+                box-shadow:0 8px 20px rgba(26,39,68,0.14); z-index:9999; max-height:200px;
+                overflow-y:auto;`;
+            newInput.parentElement.style.position = 'relative';
+            newInput.parentElement.appendChild(dd);
+        }
+        _tvImgSearchAcDropdown = dd;
 
-        if (!_imgPlacesAc) {
-            _imgPlacesAc = new google.maps.places.AutocompleteService();
+        if (!window.google) return;
+        if (!_tvImgSearchAcService) {
+            _tvImgSearchAcService = new google.maps.places.AutocompleteService();
         }
 
-        // 드롭다운 - body에 직접 부착 (overflow:hidden 영향 없음)
-        if (!_imgAcDd) {
-            _imgAcDd = document.createElement('div');
-            _imgAcDd.style.cssText = [
-                'position:fixed', 'background:white',
-                'border:1.5px solid #CBD5E1', 'border-radius:14px',
-                'box-shadow:0 8px 28px rgba(26,39,68,0.18)',
-                'z-index:99999', 'max-height:230px', 'overflow-y:auto',
-                'display:none'
-            ].join(';');
-            document.body.appendChild(_imgAcDd);
-        }
-
-        input.addEventListener('input', function() {
-            clearTimeout(_imgAcTimer);
-            const q = this.value.trim();
-            if (!q) { _imgAcDd.style.display = 'none'; return; }
-            _imgAcTimer = setTimeout(() => {
-                _imgPlacesAc.getPlacePredictions(
+        newInput.addEventListener('input', () => {
+            clearTimeout(_tvImgSearchAcDebounce);
+            const q = newInput.value.trim();
+            if (!q) { dd.style.display = 'none'; return; }
+            _tvImgSearchAcDebounce = setTimeout(() => {
+                _tvImgSearchAcService.getPlacePredictions(
                     { input: q, language: 'ko' },
                     (preds, status) => {
-                        _imgAcDd.innerHTML = '';
-                        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds?.length) {
-                            _imgAcDd.style.display = 'none'; return;
+                        dd.innerHTML = '';
+                        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds) {
+                            dd.style.display = 'none'; return;
                         }
-                        // 드롭다운 위치 계산
-                        const rect = input.getBoundingClientRect();
-                        _imgAcDd.style.left  = rect.left + 'px';
-                        _imgAcDd.style.top   = (rect.bottom + 4) + 'px';
-                        _imgAcDd.style.width = rect.width + 'px';
-
-                        preds.slice(0, 6).forEach(pred => {
-                            const row = document.createElement('div');
-                            row.style.cssText = 'padding:11px 14px;cursor:pointer;font-size:0.83rem;border-bottom:1px solid #F8FAFF;display:flex;align-items:flex-start;gap:9px;';
-                            row.innerHTML = `
-                                <span style="color:#94A3B8;flex-shrink:0;margin-top:2px;font-size:0.9rem;">📍</span>
-                                <div style="min-width:0;">
-                                    <div style="font-weight:700;color:#1A2744;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                        ${pred.structured_formatting.main_text}
-                                    </div>
-                                    <div style="font-size:0.7rem;color:#94A3B8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                        ${pred.structured_formatting.secondary_text || ''}
-                                    </div>
+                        preds.slice(0, 5).forEach(pred => {
+                            const item = document.createElement('div');
+                            item.style.cssText = `padding:10px 14px; cursor:pointer; font-size:0.83rem;
+                                border-bottom:1px solid #F1F5F9; display:flex; align-items:flex-start; gap:8px;`;
+                            item.innerHTML = `<span style="color:var(--text-muted);flex-shrink:0;margin-top:1px;">📍</span>
+                                <div>
+                                    <div style="font-weight:700;color:var(--navy);">${pred.structured_formatting.main_text}</div>
+                                    <div style="font-size:0.7rem;color:var(--text-muted);">${pred.structured_formatting.secondary_text||''}</div>
                                 </div>`;
-                            row.addEventListener('mouseenter', () => row.style.background = '#F0F4FF');
-                            row.addEventListener('mouseleave', () => row.style.background = 'white');
-                            row.addEventListener('touchstart', () => row.style.background = '#F0F4FF', {passive:true});
-                            row.addEventListener('touchend',   () => row.style.background = 'white',  {passive:true});
-                            row.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                input.value = pred.structured_formatting.main_text;
-                                _imgAcDd.style.display = 'none';
-                                _imgAcDd.innerHTML = '';
-                                // 선택 즉시 Unsplash 검색 실행
-                                tvImgSearchUnsplash();
+                            item.addEventListener('mouseenter', () => item.style.background='#F0F4FF');
+                            item.addEventListener('mouseleave', () => item.style.background='white');
+                            item.addEventListener('touchstart', () => item.style.background='#F0F4FF', {passive:true});
+                            item.addEventListener('touchend',   () => item.style.background='white', {passive:true});
+                            item.addEventListener('click', () => {
+                                newInput.value = pred.structured_formatting.main_text;
+                                dd.style.display = 'none';
+                                dd.innerHTML = '';
+                                // 장소명 선택 즉시 Unsplash 검색 자동 실행
+                                setTimeout(() => tvImgSearchUnsplash(), 100);
                             });
-                            _imgAcDd.appendChild(row);
+                            dd.appendChild(item);
                         });
-                        _imgAcDd.style.display = 'block';
+                        dd.style.display = 'block';
                     }
                 );
-            }, 250);
+            }, 280);
         });
 
-        // 외부 탭/클릭 시 드롭다운 닫기
+        // 외부 클릭 시 닫기
         document.addEventListener('click', (e) => {
-            if (_imgAcDd && !input.contains(e.target) && !_imgAcDd.contains(e.target)) {
-                _imgAcDd.style.display = 'none';
+            if (dd && !newInput.contains(e.target) && !dd.contains(e.target)) {
+                dd.style.display = 'none';
             }
-        }, true);
+        });
     }
 
-    // 이미지 편집 모달 닫힐 때 드롭다운 정리
-    function _closeImgAcDd() {
-        if (_imgAcDd) _imgAcDd.style.display = 'none';
-    }
-
-
+    let _tvImgSelectedUrl = ''; // 현재 선택된 URL (검색/업로드/URL 공통)
 
     async function tvImgSearchUnsplash() {
         // cloneNode 후에도 id가 같으므로 querySelector로 안전하게 참조
@@ -5539,7 +5520,7 @@
         _tvImgSelectedUrl = '';
         const fileInput = document.getElementById('tvImgFileInput');
         if (fileInput) fileInput.value = '';
-        _closeImgAcDd();
+        if (_imgAcDropdown) _imgAcDropdown.style.display = 'none';
         document.getElementById('tvImgEditModal').classList.remove('active');
         tpToast('✅ 이미지가 변경되었습니다.', 'success');
     }
@@ -5561,7 +5542,7 @@
         _tvImgSelectedUrl = '';
         const fileInput = document.getElementById('tvImgFileInput');
         if (fileInput) fileInput.value = '';
-        _closeImgAcDd();
+        if (_imgAcDropdown) _imgAcDropdown.style.display = 'none';
         document.getElementById('tvImgEditModal').classList.remove('active');
         tpToast('이미지가 제거되었습니다.', 'info');
     }
@@ -5583,374 +5564,118 @@
                     _tvImgSelectedUrl = '';
                 }
             });
-        }
-    });
 
-    function closeTimelineView() {
-        document.getElementById("timelineViewOverlay").classList.remove("active");
+    // ── Unsplash 검색창 자동완성 (body 직접 append 방식) ──
+    let _imgAcService  = null;
+    let _imgAcDebounce = null;
+    let _imgAcDropdown = null;  // body에 붙는 전역 드롭다운
+
+    function _ensureImgAcDropdown() {
+        // 이미 있으면 재사용
+        let dd = document.getElementById('_imgAcDd');
+        if (!dd) {
+            dd = document.createElement('div');
+            dd.id = '_imgAcDd';
+            dd.style.cssText = [
+                'position:fixed',
+                'background:white',
+                'border:1.5px solid #CBD5E1',
+                'border-radius:14px',
+                'box-shadow:0 8px 28px rgba(26,39,68,0.18)',
+                'z-index:99999',
+                'max-height:220px',
+                'overflow-y:auto',
+                'display:none',
+                'min-width:240px'
+            ].join(';');
+            document.body.appendChild(dd);
+        }
+        _imgAcDropdown = dd;
+        return dd;
     }
 
-    function renderTvDay(day) {
-        _tvCurrentDay = day;  // 현재 날짜 추적
-        let body = document.getElementById("tvBody");
-        body.innerHTML = "";
+    function _positionImgAcDropdown(input) {
+        if (!_imgAcDropdown) return;
+        const rect = input.getBoundingClientRect();
+        _imgAcDropdown.style.left  = rect.left + 'px';
+        _imgAcDropdown.style.top   = (rect.bottom + 4) + 'px';
+        _imgAcDropdown.style.width = rect.width + 'px';
+    }
 
-        // 날짜 헤더 표시
-        let dows = ["일","월","화","수","목","금","토"];
-        let cityColor = day.cityColor || "#94A3B8";
-        let dateStr = day.dateObj ? `${day.dateObj.getMonth()+1}/${day.dateObj.getDate()}(${dows[day.dateObj.getDay()]})` : "";
-        document.getElementById("tvTitle").textContent = `Day ${day.globalDayNum}  ${dateStr}`;
-
-        // 도시 배지
-        if (day.city) {
-            let badge = document.createElement("div");
-            badge.className = "tv-city-badge";
-            badge.style.cssText = `background:${cityColor}; display:inline-flex; align-items:center; gap:6px; margin-bottom:14px;`;
-            badge.innerHTML = `<span>🏙️</span><span>${day.city}</span>`;
-            body.appendChild(badge);
-        }
-
-        if (day.items.length === 0) {
-            body.innerHTML = `<div class="tv-empty">
-                <div style="font-size:2.5rem;margin-bottom:10px;">📭</div>
-                <div style="font-weight:700;color:var(--navy);">이 날은 등록된 항목이 없습니다.</div>
-                <div style="font-size:0.8rem;margin-top:8px;color:var(--text-muted);line-height:1.6;">하단 <strong style="color:var(--navy);">＋ 항목추가</strong> 버튼으로 일정을 추가하세요.</div>
-                <button onclick="openTvAddSheet()" style="margin-top:16px;padding:11px 24px;background:linear-gradient(135deg,var(--navy),var(--navy-light));color:white;border:none;border-radius:20px;font-size:0.88rem;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(26,39,68,0.25);">＋ 항목 추가하기</button>
-            </div>`;
+    function initImgSearchAutocomplete() {
+        const input = document.getElementById('tvImgSearchInput');
+        if (!input) return;
+        if (!window.google || !google.maps || !google.maps.places) {
+            console.warn('Google Maps Places API 로드 안됨');
             return;
         }
 
-        day.items.forEach((item, itemIdx) => {
-            let card = document.createElement("div");
-            card.className = "tv-card";
+        // 이전 리스너 제거를 위해 클론 교체
+        const newInput = input.cloneNode(true);
+        input.parentNode.replaceChild(newInput, input);
+        const inp = newInput;
 
-            // 히어로 이미지 (Unsplash + 수동 변경 지원)
-            let heroHtml = "";
-            // searchQuery: 장소명 우선, 없으면 제목, 없으면 도시명
-            let searchQuery = (item.place ? item.place.name : null)
-                           || item.title
-                           || day.city
-                           || "travel";
-            // manualImgKey: 제목 제외 (cat + 날짜 + 인덱스) → 장소명이 바뀌어도 이미지 유지
-            let _dateKey = day.dateObj ? day.dateObj.toISOString().slice(0,10) : "nodate";
-            let manualImgKey = `tvImg_${item.cat}_${_dateKey}_${itemIdx}`;
-            let manualImg = localStorage.getItem(manualImgKey);
-            // Unsplash 캐시는 searchQuery 기반
-            let cachedImg = manualImg || unsplashCache[searchQuery];
-            if (cachedImg) {
-                heroHtml = `<img class="tv-card-hero" src="${cachedImg}" alt="${escapeHtml(searchQuery)}" loading="lazy" onerror="this.remove()" data-img-key="${manualImgKey}">`;
-            } else {
-                const catEmojis = {"도시":"🏙️","일정":"📅","숙소":"🏨","장소":"📍","교통":"🚌","식사":"🍽️","쇼핑":"🛒","특징":"💡"};
-                let emoji = "✈️";
-                for (let [k,v] of Object.entries(catEmojis)) { if (item.cat && item.cat.includes(k)) { emoji = v; break; } }
-                heroHtml = `<div class="tv-card-hero-placeholder" style="background:linear-gradient(135deg, ${cityColor}22 0%, ${cityColor}44 100%);" data-img-key="${manualImgKey}" data-search="${escapeHtml(searchQuery)}">${emoji}</div>`;
-                fetchUnsplashImg(searchQuery).then(url => {
-                    if (url) {
-                        let ph = card.querySelector(".tv-card-hero-placeholder");
-                        if (ph) ph.outerHTML = `<img class="tv-card-hero" src="${url}" alt="${escapeHtml(searchQuery)}" loading="lazy" onerror="this.remove()" data-img-key="${manualImgKey}">`;
+        if (!_imgAcService) {
+            _imgAcService = new google.maps.places.AutocompleteService();
+        }
+
+        const dd = _ensureImgAcDropdown();
+
+        inp.addEventListener('input', () => {
+            clearTimeout(_imgAcDebounce);
+            const q = inp.value.trim();
+            if (!q || q.length < 1) { dd.style.display = 'none'; return; }
+            _imgAcDebounce = setTimeout(() => {
+                _imgAcService.getPlacePredictions(
+                    { input: q, language: 'ko' },
+                    (preds, status) => {
+                        dd.innerHTML = '';
+                        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds || preds.length === 0) {
+                            dd.style.display = 'none'; return;
+                        }
+                        preds.slice(0, 6).forEach(pred => {
+                            const row = document.createElement('div');
+                            row.style.cssText = 'padding:11px 14px;cursor:pointer;font-size:0.85rem;border-bottom:1px solid #F8FAFF;display:flex;align-items:flex-start;gap:10px;';
+                            row.innerHTML = `
+                                <span style="color:#94A3B8;flex-shrink:0;margin-top:2px;">📍</span>
+                                <div>
+                                    <div style="font-weight:700;color:#1A2744;line-height:1.3;">${pred.structured_formatting.main_text}</div>
+                                    <div style="font-size:0.72rem;color:#94A3B8;margin-top:2px;">${pred.structured_formatting.secondary_text || ''}</div>
+                                </div>`;
+                            row.addEventListener('mouseenter', () => row.style.background = '#F0F4FF');
+                            row.addEventListener('mouseleave', () => row.style.background = 'white');
+                            row.addEventListener('touchstart', () => row.style.background = '#F0F4FF', {passive:true});
+                            row.addEventListener('touchend',   () => row.style.background = 'white',  {passive:true});
+                            row.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                inp.value = pred.structured_formatting.main_text;
+                                dd.style.display = 'none';
+                                dd.innerHTML = '';
+                                // 선택 즉시 Unsplash 검색 자동 실행
+                                tvImgSearchUnsplash();
+                            });
+                            dd.appendChild(row);
+                        });
+                        _positionImgAcDropdown(inp);
+                        dd.style.display = 'block';
                     }
-                });
-            }
-
-            let name   = item.place ? item.place.name : (item.title || item.content || "");
-            let addr   = item.place ? (item.place.address || "") : (item.location ? (item.location.address||"") : "");
-            let time   = item.time || "";
-            let budget = item.budget ? `₩${parseInt(item.budget).toLocaleString()}` : "";
-            let detail = item.detail || "";
-            let catTag = `<span style="font-size:0.68rem;background:#F1F5F9;border-radius:8px;padding:2px 8px;color:var(--text-sub);font-weight:600;">${item.cat}</span>`;
-
-            // 번호 뱃지 색상
-            let numBadge = `<span style="position:absolute;top:10px;left:10px;background:${cityColor};color:white;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.78rem;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,0.25);">${itemIdx+1}</span>`;
-
-            // 이미지 편집 버튼 (우상단) - data 속성으로 이벤트 위임
-            let imgEditBtn = `<button class="tv-img-edit-btn" data-img-key="${manualImgKey}" data-search="${escapeHtml(searchQuery)}"
-                style="position:absolute;top:8px;right:8px;background:rgba(26,39,68,0.65);border:none;color:white;border-radius:10px;padding:5px 10px;font-size:0.72rem;font-weight:700;cursor:pointer;backdrop-filter:blur(6px);z-index:5;letter-spacing:0.3px;">🖼️ 변경</button>`;
-            
-            card.innerHTML = `
-                <div style="position:relative;">
-                    ${heroHtml}
-                    ${numBadge}
-                    ${imgEditBtn}
-                </div>
-                <div class="tv-card-body">
-                    ${time ? `<div class="tv-card-time">⏰ ${escapeHtml(time)}</div>` : ""}
-                    <div class="tv-card-name">${escapeHtml(name)}</div>
-                    ${addr ? `<div class="tv-card-addr">📍 ${escapeHtml(addr)}</div>` : ""}
-                    ${detail && detail !== name ? `<div style="font-size:0.78rem;color:var(--text-sub);margin-top:4px;line-height:1.5;">${escapeHtml(detail.substring(0,80))}${detail.length>80?'…':''}</div>` : ""}
-                    ${item.content && item.content !== name ? `<div style="font-size:0.78rem;color:var(--text-sub);margin-top:4px;">${escapeHtml(item.content)}</div>` : ""}
-                    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-                        ${catTag}
-                        ${budget ? `<span class="tv-card-budget">${budget}</span>` : ""}
-                    </div>
-                </div>
-            `;
-            // 카드 바디 탭 → 해당 셀 편집
-            card.querySelector('.tv-card-body').addEventListener('click', () => {
-                const date   = day.dateObj;
-                const monday = getStartOfWeek(date);
-                const dayIdx = (date.getDay() + 6) % 7;
-                const catIdx = CATEGORIES.findIndex(c => c === item.cat);
-                if (catIdx === -1) return;
-                if (item.cat && item.cat.includes('일정')) {
-                    document.getElementById('scheduleModal').style.zIndex = '3500';
-                    openScheduleModal(catIdx, dayIdx, monday);
-                } else {
-                    document.getElementById('cellModal').style.zIndex = '3500';
-                    openCellEditModal(catIdx, dayIdx, monday);
-                }
-            });
-            card.querySelector('.tv-card-body').style.cursor = 'pointer';
-
-            body.appendChild(card);
+                );
+            }, 250);
         });
-    }
 
-    // ==================== 우선순위3: Unsplash API 연동 ====================
-    // ⚠️ 본인의 Unsplash Access Key로 교체하세요 (https://unsplash.com/developers)
-    const UNSPLASH_ACCESS_KEY = "lPcT5zpiDjxfU5MKSdspVKGs4k6gdBSqRS0TkPcnAhA";
-    let unsplashCache = {}; // query → imageUrl (세션 캐시)
+        inp.addEventListener('focus', () => {
+            if (inp.value.trim()) _positionImgAcDropdown(inp);
+        });
 
-    async function fetchUnsplashImg(query) {
-        if (!query || UNSPLASH_ACCESS_KEY === "YOUR_UNSPLASH_ACCESS_KEY") return null;
-        if (unsplashCache[query]) return unsplashCache[query];
-        try {
-            const res = await fetch(
-                `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`,
-                { headers: { Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}` } }
-            );
-            const data = await res.json();
-            if (data.results && data.results.length > 0) {
-                let url = data.results[0].urls.small;
-                unsplashCache[query] = url;
-                return url;
+        // 외부 클릭 시 닫기
+        const outsideClick = (e) => {
+            if (!inp.contains(e.target) && !dd.contains(e.target)) {
+                dd.style.display = 'none';
             }
-        } catch(e) {}
-        return null;
+        };
+        document.addEventListener('click', outsideClick);
+        document.addEventListener('touchstart', outsideClick, {passive:true});
     }
-
-    // ==================== 우선순위4: Supabase 클라우드 동기화 ====================
-    // ⚠️ 본인의 Supabase 프로젝트 URL과 anon key로 교체하세요
-    const SUPABASE_URL    = "https://ynygpludtqkrqgyjjasd.supabase.co";
-    const SUPABASE_ANON   = "sb_publishable_t463PBZvKrvLZ6hXr5aLfA_FJ_PTzbw";
-    let supabaseClient    = null;
-    let supabaseUser      = null;
-    let cloudSyncTimer    = null;
-
-    function initSupabase() {
-        try {
-            if (typeof supabase === "undefined" || SUPABASE_URL.includes("YOUR_PROJECT")) return;
-            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
-            // 로그인 상태 복원
-            supabaseClient.auth.getSession().then(({ data }) => {
-                if (data.session) setSupabaseUser(data.session.user);
-            });
-            // 인증 상태 변경 구독
-            supabaseClient.auth.onAuthStateChange((event, session) => {
-                if (session) setSupabaseUser(session.user);
-                else clearSupabaseUser();
-            });
-        } catch(e) { console.warn("Supabase 초기화 실패:", e); }
-    }
-
-    function setSupabaseUser(user) {
-        supabaseUser = user;
-        document.getElementById("cloudDot").className = "cloud-dot online";
-        document.getElementById("cloudStatusText").textContent = `☁️ ${user.email} 로그인됨`;
-        document.getElementById("cloudLoginBtn").style.display = "none";
-        document.getElementById("cloudUserInfo").style.display = "inline";
-        // 이메일이 길면 앞부분(@기준)만 표시
-        const emailShort = user.email.length > 18 ? user.email.split('@')[0] + '…' : user.email;
-        document.getElementById("cloudUserInfo").textContent = emailShort;
-        document.getElementById("cloudSyncNowBtn").style.display = "inline-block";
-        document.getElementById("cloudLogoutBtn").style.display = "inline-block";
-        document.getElementById("loginModal").classList.remove("active");
-        // 로그인 후 클라우드에서 데이터 불러오기 시도
-        cloudSyncDown();
-    }
-
-    function clearSupabaseUser() {
-        supabaseUser = null;
-        document.getElementById("cloudDot").className = "cloud-dot offline";
-        document.getElementById("cloudStatusText").textContent = "로그인하면 클라우드에 자동 저장됩니다";
-        document.getElementById("cloudLoginBtn").style.display = "inline-block";
-        document.getElementById("cloudUserInfo").style.display = "none";
-        document.getElementById("cloudSyncNowBtn").style.display = "none";
-        document.getElementById("cloudLogoutBtn").style.display = "none";
-    }
-
-    async function supabaseLoginEmail() {
-        let email = document.getElementById("loginEmail").value.trim();
-        let pw    = document.getElementById("loginPassword").value;
-        let msg   = document.getElementById("loginMsg");
-        if (!email || !pw) { msg.textContent = "이메일과 비밀번호를 입력해주세요."; return; }
-        msg.textContent = "로그인 중..."; msg.style.color = "#2563EB";
-        const { error } = await supabaseClient.auth.signInWithPassword({ email, password: pw });
-        if (error) { msg.textContent = error.message; msg.style.color = "#e53e3e"; }
-    }
-
-    // 로그인/회원가입 탭 전환
-    function switchLoginTab(tab) {
-        const loginForm  = document.getElementById('loginFormArea');
-        const signupForm = document.getElementById('signupFormArea');
-        const loginTab   = document.getElementById('loginTabBtn');
-        const signupTab  = document.getElementById('signupTabBtn');
-        document.getElementById('loginMsg').textContent = '';
-        if (tab === 'login') {
-            loginForm.style.display  = 'block';
-            signupForm.style.display = 'none';
-            loginTab.style.cssText  += ';background:white;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,0.1);';
-            signupTab.style.cssText += ';background:transparent;color:var(--text-sub);box-shadow:none;';
-        } else {
-            loginForm.style.display  = 'none';
-            signupForm.style.display = 'block';
-            signupTab.style.cssText += ';background:white;color:var(--navy);box-shadow:0 1px 4px rgba(0,0,0,0.1);';
-            loginTab.style.cssText  += ';background:transparent;color:var(--text-sub);box-shadow:none;';
-            setTimeout(() => { const el = document.getElementById('signupEmail'); if(el) el.focus(); }, 200);
-        }
-    }
-
-    async function supabaseSignupEmail() {
-        const email  = document.getElementById("signupEmail").value.trim();
-        const pw     = document.getElementById("signupPassword").value;
-        const pwConf = document.getElementById("signupPasswordConfirm").value;
-        const msg    = document.getElementById("loginMsg");
-        msg.style.color = 'var(--rose)';
-        if (!email || !pw) { msg.textContent = "이메일과 비밀번호를 입력해주세요."; return; }
-        if (pw.length < 6) { msg.textContent = "비밀번호는 6자 이상이어야 합니다."; return; }
-        if (pw !== pwConf) { msg.textContent = "비밀번호가 일치하지 않습니다."; return; }
-        msg.textContent = "회원가입 중..."; msg.style.color = "var(--sky)";
-        const { error } = await supabaseClient.auth.signUp({ email, password: pw });
-        if (error) { msg.textContent = error.message; msg.style.color = "var(--rose)"; }
-        else {
-            msg.textContent = "✅ 확인 이메일을 발송했습니다. 이메일을 확인해주세요.";
-            msg.style.color = "var(--green)";
-            tpToast("✅ 확인 이메일을 발송했습니다!", "success");
-        }
-    }
-
-    async function supabaseLoginGoogle() {
-        const hint = document.getElementById('googleHint');
-        try {
-            const { error } = await supabaseClient.auth.signInWithOAuth({
-                provider: "google",
-                options: { redirectTo: location.href }
-            });
-            if (error) {
-                const msg = document.getElementById("loginMsg");
-                msg.style.color = 'var(--rose)';
-                // "Unsupported provider" 오류 처리
-                if (error.message && (error.message.includes('provider') || error.message.includes('not enabled'))) {
-                    msg.textContent = "Google 로그인을 사용하려면 Supabase 콘솔에서 Google Provider를 활성화해야 합니다.";
-                    if (hint) hint.style.display = 'block';
-                } else {
-                    msg.textContent = error.message;
-                }
-            }
-        } catch(e) {
-            const msg = document.getElementById("loginMsg");
-            msg.style.color = 'var(--rose)';
-            msg.textContent = "Google 로그인 오류: Supabase 콘솔에서 Google Provider를 활성화해 주세요.";
-            if (hint) hint.style.display = 'block';
-        }
-    }
-
-    async function supabaseLogout() {
-        if (supabaseClient) await supabaseClient.auth.signOut();
-        clearSupabaseUser();
-    }
-
-    function scheduleCloudSync() {
-        clearTimeout(cloudSyncTimer);
-        cloudSyncTimer = setTimeout(() => cloudSyncUp(false), 5000); // 5초 후 자동 동기화
-    }
-
-    async function cloudSyncUp(manual = false) {
-        if (!supabaseClient || !supabaseUser) return;
-        document.getElementById("cloudDot").className = "cloud-dot syncing";
-        document.getElementById("cloudStatusText").textContent = "동기화 중...";
-        try {
-            const payload = {
-                user_id: supabaseUser.id,
-                trip_index: JSON.stringify(trips),
-                updated_at: new Date().toISOString()
-            };
-            // 각 여행 데이터도 동기화
-            for (let trip of trips) {
-                const rec = await idbGet(IDB_STORE_TRIPS, trip.id) ||
-                    JSON.parse(localStorage.getItem(`trip_data_${trip.id}`) || "null");
-                if (rec) {
-                    // richItems의 Base64 이미지는 제외하고 동기화 (용량 절약)
-                    const lightRec = JSON.parse(JSON.stringify(rec));
-                    if (lightRec.weekData) {
-                        lightRec.weekData.forEach(([,rows]) => rows.forEach(cells => cells.forEach((cell,ci,arr) => {
-                            if (cell && cell.startsWith('{')) {
-                                try {
-                                    let o = JSON.parse(cell);
-                                    if (o.richItems) o.richItems = o.richItems.map(ri => ri.src && ri.src !== "__idb__" && ri.src.length > 200 ? {...ri, src:"__large__"} : ri);
-                                    arr[ci] = JSON.stringify(o);
-                                } catch(e){}
-                            }
-                        })));
-                    }
-                    await supabaseClient.from("trip_data").upsert({
-                        user_id: supabaseUser.id,
-                        trip_id: trip.id,
-                        data: JSON.stringify(lightRec),
-                        updated_at: new Date().toISOString()
-                    }, { onConflict: "user_id,trip_id" });
-                }
-            }
-            await supabaseClient.from("trip_index").upsert(payload, { onConflict: "user_id" });
-            document.getElementById("cloudDot").className = "cloud-dot online";
-            document.getElementById("cloudStatusText").textContent = `☁️ 동기화 완료 ${new Date().toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'})}`;
-            if (manual) tpToast("✅ 클라우드 동기화 완료!", "success");
-        } catch(e) {
-            console.error("동기화 실패:", e);
-            document.getElementById("cloudDot").className = "cloud-dot offline";
-            document.getElementById("cloudStatusText").textContent = "⚠️ 동기화 실패 - 로컬에 저장됨";
-        }
-    }
-
-    async function cloudSyncDown() {
-        if (!supabaseClient || !supabaseUser) return;
-        try {
-            const { data, error } = await supabaseClient.from("trip_index")
-                .select("trip_index").eq("user_id", supabaseUser.id).single();
-            if (error || !data) return;
-            const cloudTrips = JSON.parse(data.trip_index || "[]");
-            if (cloudTrips.length === 0) return;
-            // 클라우드 여행 목록이 로컬보다 많은 경우만 병합
-            let merged = false;
-            for (let ct of cloudTrips) {
-                if (!trips.find(t => t.id === ct.id)) {
-                    trips.push(ct);
-                    merged = true;
-                }
-            }
-            if (merged) {
-                saveTripsIndex();
-                // 각 여행 데이터 다운로드
-                for (let ct of cloudTrips) {
-                    const { data: td } = await supabaseClient.from("trip_data")
-                        .select("data").eq("user_id", supabaseUser.id).eq("trip_id", ct.id).single();
-                    if (td && td.data) {
-                        const parsed = JSON.parse(td.data);
-                        await idbSet(IDB_STORE_TRIPS, { ...parsed, id: ct.id });
-                    }
-                }
-                renderTripList();
-                tpToast("☁️ 클라우드 데이터를 불러왔습니다.", "success");
-            }
-        } catch(e) { console.warn("클라우드 다운로드 실패:", e); }
-    }
-
-    // popstate는 상단 통합 핸들러로 처리됨
-
-    init();
-    
-</script>
-</body>
-</html
         }
     });
 
