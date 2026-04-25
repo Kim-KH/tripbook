@@ -6227,18 +6227,21 @@
                 }
             }
 
-            const shareId = crypto.randomUUID();
-            const { error } = await supabaseClient.from('shared_trips').insert({
-                id:       shareId,
-                trip_id:  tripMeta.id,
-                owner_id: supabaseUser.id,
-                title:    tripMeta.name || '여행 계획',
-                data:     shareData,
-                created_at: new Date().toISOString()
-            });
+            const { data: inserted, error } = await supabaseClient
+                .schema('public')
+                .from('shared_trips')
+                .insert({
+                    trip_id:  tripMeta.id,
+                    owner_id: supabaseUser.id,
+                    title:    tripMeta.name || '여행 계획',
+                    data:     shareData
+                })
+                .select('id')
+                .single();
 
             if (error) throw error;
 
+            const shareId = inserted.id;
             const shareUrl = `${location.origin}${location.pathname}?share=${shareId}`;
             document.getElementById('shareLinkInput').value = shareUrl;
             document.getElementById('shareLinkWrap').style.display = 'block';
@@ -6278,6 +6281,7 @@
 
         try {
             const { data, error } = await supabaseClient
+                .schema('public')
                 .from('shared_trips')
                 .select('title, data')
                 .eq('id', shareId)
