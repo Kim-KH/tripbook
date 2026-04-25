@@ -5846,7 +5846,7 @@
 
     // ==================== 우선순위4: Supabase 클라우드 동기화 ====================
     // ⚠️ 본인의 Supabase 프로젝트 URL과 anon key로 교체하세요
-    const SUPABASE_URL    = "https://ynygpludtqkrqgyjjasd.supabase.co";
+    const SUPABASE_URL    = "https://mtgxpqgnsjkcnskyhanr.supabase.co";
     const SUPABASE_ANON   = "sb_publishable_t463PBZvKrvLZ6hXr5aLfA_FJ_PTzbw";
     let supabaseClient    = null;
     let supabaseUser      = null;
@@ -6226,19 +6226,34 @@
                 }
             }
 
-            // ── URL에 데이터 직접 인코딩 (DB 불필요) ──
-            // 데이터를 JSON → UTF-8 → base64 로 압축하여 URL에 포함
-            const jsonStr   = JSON.stringify({
-                title: tripMeta.name || '여행 계획',
-                data:  shareData
+            // ── shared_trips 테이블에 fetch로 직접 저장 ──
+            const session = await supabaseClient.auth.getSession();
+            const token   = session.data.session.access_token;
+
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/shared_trips`, {
+                method:  'POST',
+                headers: {
+                    'apikey':        SUPABASE_ANON,
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type':  'application/json',
+                    'Prefer':        'return=representation'
+                },
+                body: JSON.stringify({
+                    trip_id:  tripMeta.id,
+                    owner_id: supabaseUser.id,
+                    title:    tripMeta.name || '여행 계획',
+                    data:     shareData
+                })
             });
-            // TextEncoder → Uint8Array → base64
-            const bytes     = new TextEncoder().encode(jsonStr);
-            const binStr    = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
-            const b64       = btoa(binStr);
-            // URL safe base64
-            const b64url    = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-            const shareUrl  = `${location.origin}${location.pathname}?sd=${b64url}`;
+
+            const resText = await res.text();
+            if (!res.ok) throw new Error(resText);
+
+            let resJson;
+            try { resJson = JSON.parse(resText); } catch(e) { throw new Error('응답 파싱 실패: ' + resText); }
+            const shareId  = Array.isArray(resJson) ? resJson[0].id : resJson.id;
+            if (!shareId)  throw new Error('ID를 받지 못했습니다: ' + resText);
+            const shareUrl = `${location.origin}${location.pathname}?share=${shareId}`;
             document.getElementById('shareLinkInput').value = shareUrl;
             document.getElementById('shareLinkWrap').style.display = 'block';
             msg.style.color = '#10b981';
@@ -6273,22 +6288,19 @@
     async function checkSharedView() {
         const params = new URLSearchParams(location.search);
         const shareId = params.get('share');
-        const sdParam = params.get('sd');
-        if (!shareId && !sdParam) return false;
-        if (!sdParam && !supabaseClient) return false;
+        if (!shareId) return false;
 
         try {
-            // URL 파라미터에서 직접 데이터 디코딩
-            const sdParam = new URLSearchParams(location.search).get('sd');
-            if (!sdParam) { tpToast('잘못된 공유 링크입니다.', 'warning'); return false; }
-            let data, error = null;
+            // shared_trips 테이블에서 fetch로 직접 조회 (anon key 사용)
+            const selRes  = await fetch(
+                `${SUPABASE_URL}/rest/v1/shared_trips?id=eq.${shareId}&select=title,data&limit=1`,
+                { headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` } }
+            );
+            const selText = await selRes.text();
+            let data = null, error = null;
             try {
-                const b64 = sdParam.replace(/-/g, '+').replace(/_/g, '/');
-                const binStr = atob(b64);
-                const bytes  = new Uint8Array([...binStr].map(c => c.charCodeAt(0)));
-                const json   = new TextDecoder().decode(bytes);
-                const parsed = JSON.parse(json);
-                data = { title: parsed.title, data: parsed.data };
+                const arr = JSON.parse(selText);
+                data = arr && arr[0] ? { title: arr[0].title, data: arr[0].data } : null;
             } catch(e) { error = e; }
             if (error || !data) {
                 tpToast('공유된 여행을 찾을 수 없습니다.', 'warning'); return false;
