@@ -1469,6 +1469,7 @@
             <button class="nav-btn period-btn" id="setPeriodBtn">🏙️ 도시설정</button>
             <button class="nav-btn" id="openTripListBtn" style="background:rgba(255,255,255,0.18);">📂 내여행</button>
             <button class="nav-btn" id="openMapBtn" style="background:rgba(255,150,60,0.3); border-color:rgba(255,150,60,0.5);">🗺️ 지도</button>
+            <button class="nav-btn" id="openShareBtn" style="background:rgba(16,185,129,0.3); border-color:rgba(16,185,129,0.5);">🔗 공유</button>
             <button class="nav-btn" id="openTimelineViewBtn" style="background:rgba(139,92,246,0.3); border-color:rgba(139,92,246,0.5);">📋 카드뷰</button>
             <!-- 설정 버튼 -->
             <button class="settings-gear-btn" id="settingsGearBtn" title="설정">
@@ -1690,6 +1691,18 @@
             <div id="mapDateTabBar" style="display:flex; gap:5px; overflow-x:auto; padding-bottom:4px; scrollbar-width:thin;"></div>
         </div>
 
+        <!-- 경로 탐색 버튼 행 -->
+        <div id="mapRouteRow" style="display:flex; gap:8px; margin-bottom:6px; flex-shrink:0; align-items:center; flex-wrap:wrap;">
+            <button id="mapRouteBtn" style="padding:7px 16px; border-radius:20px; border:none; font-size:0.82rem; font-weight:700; cursor:pointer; background:#10b981; color:white; white-space:nowrap;">🚗 경로·소요시간</button>
+            <select id="mapTravelMode" style="padding:7px 14px; border:1.5px solid var(--border); border-radius:16px; font-size:0.82rem; font-weight:700; color:var(--navy); background:white; cursor:pointer; font-family:inherit;">
+                <option value="DRIVING">🚗 자동차</option>
+                <option value="TRANSIT">🚇 대중교통</option>
+                <option value="WALKING">🚶 도보</option>
+            </select>
+            <button id="mapRouteClearBtn" style="display:none; padding:7px 14px; border-radius:20px; border:1.5px solid #e2e8f0; font-size:0.82rem; font-weight:700; cursor:pointer; background:white; color:#64748b; white-space:nowrap;">✕ 경로 지우기</button>
+        </div>
+        <!-- 소요시간 패널 -->
+        <div id="mapRoutePanel" style="display:none; flex-shrink:0; margin-bottom:6px; background:#f0fdf4; border:1.5px solid #bbf7d0; border-radius:14px; padding:10px 14px; font-size:0.8rem; max-height:130px; overflow-y:auto;"></div>
         <div id="mapCanvas" style="width: 100%; flex:1; border-radius: 16px; background: #eee; min-height:200px;"></div>
     </div>
 </div>
@@ -1804,8 +1817,61 @@
     </div>
 </div>
 
+
+<!-- ── 공유 모달 ── -->
+<div id="shareModal" class="modal-overlay" style="z-index:3600;">
+    <div class="modal-container sub-modal-container">
+        <h3 style="border-left:4px solid var(--green); padding-left:12px;">🔗 여행 공유</h3>
+        <div style="font-size:0.85rem; color:var(--text-sub); margin-bottom:14px;">
+            링크를 가진 누구든 이 여행 계획을 볼 수 있습니다.<br>
+            <span style="font-size:0.78rem; color:#94a3b8;">공유 시점의 스냅샷이 저장됩니다.</span>
+        </div>
+        <!-- 공유 링크 표시 -->
+        <div id="shareLinkWrap" style="display:none; margin-bottom:14px;">
+            <div style="font-size:0.8rem; font-weight:700; color:var(--navy); margin-bottom:6px;">📎 공유 링크</div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <input id="shareLinkInput" type="text" readonly
+                    style="flex:1; padding:10px 14px; border:1.5px solid var(--border); border-radius:12px;
+                           font-size:0.8rem; color:var(--navy); background:#f8fafc; font-family:inherit;">
+                <button id="shareLinkCopyBtn"
+                    style="padding:10px 16px; background:var(--navy); color:white; border:none;
+                           border-radius:12px; font-size:0.82rem; font-weight:700; cursor:pointer; white-space:nowrap;">
+                    📋 복사
+                </button>
+            </div>
+        </div>
+        <!-- 공유 옵션 -->
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
+            <label style="display:flex; align-items:center; gap:10px; font-size:0.85rem; cursor:pointer;">
+                <input type="checkbox" id="shareIncludeBudget" checked
+                    style="width:18px; height:18px; accent-color:var(--brand);">
+                <span>💰 예산 정보 포함</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:10px; font-size:0.85rem; cursor:pointer;">
+                <input type="checkbox" id="shareIncludeMemo" checked
+                    style="width:18px; height:18px; accent-color:var(--brand);">
+                <span>📝 메모 정보 포함</span>
+            </label>
+        </div>
+        <div id="shareStatusMsg" style="font-size:0.8rem; text-align:center; margin-bottom:10px; min-height:18px;"></div>
+        <div style="display:flex; gap:10px;">
+            <button id="shareGenerateBtn"
+                style="flex:1; padding:13px; background:linear-gradient(135deg,var(--brand),var(--brand-dark));
+                       color:white; border:none; border-radius:16px; font-size:0.9rem; font-weight:700;
+                       cursor:pointer; box-shadow:0 4px 12px rgba(255,107,53,0.35);">
+                🔗 링크 생성
+            </button>
+            <button id="closeShareModalBtn"
+                style="flex:1; padding:13px; background:#f1f5f9; color:var(--text-sub);
+                       border:none; border-radius:16px; font-size:0.9rem; font-weight:600; cursor:pointer;">
+                닫기
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- 링크 서브 모달 -->
-<div id="linkSubModal" class="modal-overlay sub-modal" style="z-index:3600;">
+<div id="linkSubModal" class="modal-overlay sub-modal">
     <div class="modal-container sub-modal-container">
         <h3 style="border-left:4px solid var(--sky); padding-left:12px;">🔗 링크 관리</h3>
         <!-- 링크 추가 입력 -->
@@ -1823,7 +1889,7 @@
 </div>
 
 <!-- 파일 서브 모달 -->
-<div id="fileSubModal" class="modal-overlay sub-modal" style="z-index:3600;">
+<div id="fileSubModal" class="modal-overlay sub-modal">
     <div class="modal-container sub-modal-container">
         <h3 style="border-left:4px solid var(--green); padding-left:12px;">📁 파일 / 사진 관리</h3>
         <!-- 파일 추가 버튼들 -->
@@ -4337,6 +4403,9 @@
 
         // 카드뷰 액션 바 초기화
         initTvActionBar();
+
+        // 공유 링크로 접근 시 처리 (Supabase 초기화 후)
+        setTimeout(() => checkSharedView(), 800);
     }
     
     // ==================== 서브 모달: 링크 & 파일 관리 ====================
@@ -5990,6 +6059,268 @@
             }
         } catch(e) { console.warn("클라우드 다운로드 실패:", e); }
     }
+
+
+    // ══════════════════════════════════════════════════════════
+    // ── 기능 1: 지도 경로·소요시간 (DirectionsService) ──
+    // ══════════════════════════════════════════════════════════
+    let _directionsService  = null;
+    let _directionsRenderer = null;
+
+    function initDirectionsServices() {
+        if (_directionsService) return;
+        _directionsService  = new google.maps.DirectionsService();
+        _directionsRenderer = new google.maps.DirectionsRenderer({
+            suppressMarkers: false,
+            polylineOptions: { strokeColor: '#10b981', strokeWeight: 5, strokeOpacity: 0.85 }
+        });
+    }
+
+    function clearRouteOverlay() {
+        if (_directionsRenderer) _directionsRenderer.setMap(null);
+        document.getElementById('mapRoutePanel').style.display = 'none';
+        document.getElementById('mapRouteClearBtn').style.display = 'none';
+    }
+
+    function calcRoute() {
+        initDirectionsServices();
+        // 현재 필터된 포인트에서 redPoints(장소/숙소) 순서대로 경로 계산
+        const cityVal = (document.getElementById('mapCitySelect').value || '').trim();
+        const dateVal = (document.getElementById('mapDateSelect').value || '').trim();
+        const mode    = document.getElementById('mapTravelMode').value;
+
+        // allMapPoints는 showTotalMap에서 세팅한 전역 변수 활용
+        if (!window._allMapPoints || window._allMapPoints.length === 0) {
+            tpToast('지도에 표시된 장소가 없습니다.', 'warning'); return;
+        }
+        let pts = window._allMapPoints.filter(p => p.type === 'red');
+        if (cityVal && cityVal !== '전체') pts = pts.filter(p => p.city === cityVal);
+        if (dateVal && dateVal !== '전체') pts = pts.filter(p => p.date.toLocaleDateString('ko-KR') === dateVal);
+
+        if (pts.length < 2) {
+            tpToast('경로 계산을 위해 날짜를 선택하거나 장소를 2개 이상 등록해주세요.', 'warning'); return;
+        }
+        if (pts.length > 25) {
+            tpToast('경유지가 너무 많습니다. 날짜 필터로 줄여주세요.', 'warning'); return;
+        }
+
+        const origin      = pts[0].pos;
+        const destination = pts[pts.length - 1].pos;
+        const waypoints   = pts.slice(1, -1).map(p => ({ location: p.pos, stopover: true }));
+
+        const panel = document.getElementById('mapRoutePanel');
+        panel.innerHTML = '<div style="color:#10b981; font-weight:700;">🔍 경로 계산 중...</div>';
+        panel.style.display = 'block';
+
+        _directionsService.route({
+            origin, destination, waypoints,
+            travelMode: google.maps.TravelMode[mode],
+            optimizeWaypoints: false
+        }, (result, status) => {
+            if (status !== 'OK') {
+                panel.innerHTML = `<div style="color:#e53e3e;">⚠️ 경로를 찾을 수 없습니다. (${status})<br><span style="font-size:0.75rem;">대중교통이 없는 지역은 자동차 모드를 사용해보세요.</span></div>`;
+                return;
+            }
+            // 기존 마커 선 제거 후 directions 렌더링
+            markers.forEach(m => m.setMap(null)); markers = [];
+            if (pathLine) { if (Array.isArray(pathLine)) pathLine.forEach(l=>l.setMap(null)); else pathLine.setMap(null); pathLine = null; }
+            _directionsRenderer.setMap(mainMap);
+            _directionsRenderer.setDirections(result);
+
+            // 소요시간 패널 구성
+            const legs = result.routes[0].legs;
+            let totalDur = 0, totalDist = 0;
+            let html = '<div style="font-weight:700; color:var(--navy); margin-bottom:8px;">📍 구간별 이동 정보</div>';
+            legs.forEach((leg, i) => {
+                totalDur  += leg.duration.value;
+                totalDist += leg.distance.value;
+                const from = pts[i].title.length > 10 ? pts[i].title.slice(0,10)+'…' : pts[i].title;
+                const to   = pts[i+1].title.length > 10 ? pts[i+1].title.slice(0,10)+'…' : pts[i+1].title;
+                html += `<div style="padding:5px 0; border-bottom:1px solid #d1fae5; display:flex; align-items:center; gap:6px; font-size:0.78rem;">
+                    <span style="color:#10b981; font-weight:700;">${i+1}</span>
+                    <span style="flex:1;">${from} → ${to}</span>
+                    <span style="color:#065f46; font-weight:700; white-space:nowrap;">${leg.duration.text}</span>
+                    <span style="color:#94a3b8; white-space:nowrap;">${leg.distance.text}</span>
+                </div>`;
+            });
+            const h = Math.floor(totalDur/3600), m = Math.floor((totalDur%3600)/60);
+            const durStr = h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+            const distKm = (totalDist/1000).toFixed(1);
+            html += `<div style="margin-top:8px; font-weight:700; color:var(--navy); font-size:0.85rem;">
+                🕐 총 이동시간: ${durStr} &nbsp;|&nbsp; 📏 총 거리: ${distKm}km</div>`;
+            panel.innerHTML = html;
+            document.getElementById('mapRouteClearBtn').style.display = 'inline-block';
+        });
+    }
+
+    // 경로 버튼 이벤트 (지도 모달 열릴 때 한 번만 바인딩)
+    (function bindRouteEvents() {
+        document.getElementById('mapRouteBtn').addEventListener('click', calcRoute);
+        document.getElementById('mapRouteClearBtn').addEventListener('click', () => {
+            clearRouteOverlay();
+            // 기존 마커 다시 그리기
+            if (window._allMapPoints) {
+                const cityVal = (document.getElementById('mapCitySelect').value || '').trim();
+                const dateVal = (document.getElementById('mapDateSelect').value || '').trim();
+                renderMapWithFilter(window._allMapPoints, cityVal || '전체', dateVal || '전체');
+            }
+        });
+    })();
+
+    // ══════════════════════════════════════════════════════════
+    // ── 기능 2: 공유 기능 ──
+    // Supabase 테이블: shared_trips (id uuid PK, trip_id, owner_id, data jsonb, created_at)
+    // RLS: insert - auth.uid() = owner_id / select - true (공개)
+    // ══════════════════════════════════════════════════════════
+
+    function openShareModal() {
+        if (!supabaseUser) {
+            tpToast('공유하려면 로그인이 필요합니다.', 'warning');
+            document.getElementById('loginModal').classList.add('active');
+            return;
+        }
+        document.getElementById('shareLinkWrap').style.display = 'none';
+        document.getElementById('shareStatusMsg').textContent = '';
+        document.getElementById('shareModal').classList.add('active');
+        history.pushState({ shareModal: true }, '');
+    }
+
+    function closeShareModal() {
+        document.getElementById('shareModal').classList.remove('active');
+    }
+
+    async function generateShareLink() {
+        if (!supabaseClient || !supabaseUser) return;
+        const btn = document.getElementById('shareGenerateBtn');
+        const msg = document.getElementById('shareStatusMsg');
+        const includeBudget = document.getElementById('shareIncludeBudget').checked;
+        const includeMemo   = document.getElementById('shareIncludeMemo').checked;
+
+        btn.disabled = true;
+        btn.textContent = '⏳ 링크 생성 중...';
+        msg.style.color = '#2563EB';
+        msg.textContent = '';
+
+        try {
+            // 현재 여행 데이터 수집
+            const tripMeta = trips.find(t => t.id === currentTripId) || trips[0];
+            if (!tripMeta) { throw new Error('여행 데이터가 없습니다.'); }
+
+            const rawData = await idbGet(IDB_STORE_TRIPS, tripMeta.id) ||
+                JSON.parse(localStorage.getItem(`trip_data_${tripMeta.id}`) || 'null');
+            if (!rawData) { throw new Error('저장된 여행 데이터가 없습니다.'); }
+
+            // 옵션에 따라 민감 정보 제거
+            const shareData = JSON.parse(JSON.stringify(rawData));
+            if (!includeBudget || !includeMemo) {
+                if (shareData.weekData) {
+                    shareData.weekData.forEach(([,rows]) => rows.forEach(cells => cells.forEach((cell, ci, arr) => {
+                        if (cell && cell.startsWith('{')) {
+                            try {
+                                const o = JSON.parse(cell);
+                                if (!includeBudget) delete o.budget;
+                                if (!includeMemo)   delete o.detail;
+                                arr[ci] = JSON.stringify(o);
+                            } catch(e) {}
+                        }
+                    })));
+                }
+            }
+
+            const shareId = crypto.randomUUID();
+            const { error } = await supabaseClient.from('shared_trips').insert({
+                id:       shareId,
+                trip_id:  tripMeta.id,
+                owner_id: supabaseUser.id,
+                title:    tripMeta.name || '여행 계획',
+                data:     shareData,
+                created_at: new Date().toISOString()
+            });
+
+            if (error) throw error;
+
+            const shareUrl = `${location.origin}${location.pathname}?share=${shareId}`;
+            document.getElementById('shareLinkInput').value = shareUrl;
+            document.getElementById('shareLinkWrap').style.display = 'block';
+            msg.style.color = '#10b981';
+            msg.textContent = '✅ 링크가 생성되었습니다!';
+            tpToast('🔗 공유 링크가 생성되었습니다!', 'success');
+
+        } catch(e) {
+            console.error('공유 링크 생성 실패:', e);
+            msg.style.color = '#e53e3e';
+            msg.textContent = `⚠️ 오류: ${e.message || '링크 생성에 실패했습니다.'}`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔗 링크 생성';
+        }
+    }
+
+    function copyShareLink() {
+        const input = document.getElementById('shareLinkInput');
+        navigator.clipboard.writeText(input.value).then(() => {
+            tpToast('📋 링크가 복사되었습니다!', 'success');
+            const btn = document.getElementById('shareLinkCopyBtn');
+            btn.textContent = '✅ 복사됨';
+            setTimeout(() => btn.textContent = '📋 복사', 2000);
+        }).catch(() => {
+            input.select();
+            document.execCommand('copy');
+            tpToast('📋 링크가 복사되었습니다!', 'success');
+        });
+    }
+
+    // 공유 링크로 접근 시 읽기전용 뷰 로드
+    async function checkSharedView() {
+        const params = new URLSearchParams(location.search);
+        const shareId = params.get('share');
+        if (!shareId || !supabaseClient) return false;
+
+        try {
+            const { data, error } = await supabaseClient
+                .from('shared_trips')
+                .select('title, data')
+                .eq('id', shareId)
+                .single();
+            if (error || !data) {
+                tpToast('공유된 여행을 찾을 수 없습니다.', 'warning'); return false;
+            }
+            // 읽기전용 배너 표시
+            const banner = document.createElement('div');
+            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#10b981,#059669);color:white;text-align:center;padding:10px 16px;font-size:0.85rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;';
+            banner.innerHTML = `<span>🔗 공유된 여행 계획 보기: <strong>${data.title}</strong></span><button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,0.25);border:none;color:white;padding:4px 10px;border-radius:8px;cursor:pointer;font-weight:700;">✕</button>`;
+            document.body.prepend(banner);
+            // 공유 데이터를 임시 여행으로 로드
+            const sharedTrip = { id: 'shared_view', name: data.title };
+            const existIdx = trips.findIndex(t => t.id === 'shared_view');
+            if (existIdx >= 0) trips[existIdx] = sharedTrip; else trips.unshift(sharedTrip);
+            await idbSet(IDB_STORE_TRIPS, { ...data.data, id: 'shared_view' });
+            currentTripId = 'shared_view';
+            await loadTripData('shared_view');
+            renderCalendar();
+            tpToast(`☁️ "${data.title}" 여행 계획을 불러왔습니다.`, 'success', 4000);
+            return true;
+        } catch(e) {
+            console.warn('공유 뷰 로드 실패:', e); return false;
+        }
+    }
+
+    // 공유 버튼 이벤트 바인딩
+    document.getElementById('openShareBtn').addEventListener('click', openShareModal);
+    document.getElementById('closeShareModalBtn').addEventListener('click', closeShareModal);
+    document.getElementById('shareGenerateBtn').addEventListener('click', generateShareLink);
+    document.getElementById('shareLinkCopyBtn').addEventListener('click', copyShareLink);
+    document.getElementById('shareModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('shareModal')) closeShareModal();
+    });
+
+    // allMapPoints를 전역에 저장하도록 renderMapWithFilter 래핑
+    const _origRenderMapWithFilter = renderMapWithFilter;
+    renderMapWithFilter = function(allPoints, selectedCity, selectedDate) {
+        window._allMapPoints = allPoints;
+        clearRouteOverlay();
+        _origRenderMapWithFilter(allPoints, selectedCity, selectedDate);
+    };
 
     // popstate는 상단 통합 핸들러로 처리됨
 
