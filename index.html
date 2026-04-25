@@ -5314,9 +5314,6 @@
         document.getElementById('tvImgEditModal').classList.add('active');
         history.pushState({ tvImgEdit: true }, '');
 
-        // 검색창 자동완성 초기화 (한 번만)
-        setTimeout(initImgSearchAutocomplete, 150);
-
         // 파일 업로드 핸들러 (중복 방지)
         const fileInput = document.getElementById('tvImgFileInput');
         if (fileInput) {
@@ -5343,40 +5340,32 @@
     }
 
     // Unsplash 검색창에 Places 자동완성 연결
-    let _tvImgSearchAcService = null;
-    let _tvImgSearchAcDropdown = null;
+    let _tvImgSearchAcService  = null;
     let _tvImgSearchAcDebounce = null;
+    let _tvImgSearchAcInited   = false;
 
     function initTvImgSearchAutocomplete() {
+        if (_tvImgSearchAcInited) return;
         const input = document.getElementById('tvImgSearchInput');
         if (!input) return;
-
-        // 기존 이벤트 초기화
-        const newInput = input.cloneNode(true);
-        input.parentNode.replaceChild(newInput, input);
-
-        // 드롭다운 생성 (없으면)
+        if (!window.google || !google.maps || !google.maps.places) return;
+        _tvImgSearchAcInited  = true;
+        _tvImgSearchAcService = new google.maps.places.AutocompleteService();
+        // 드롭다운 생성 (없으면) - 키보드에 가리지 않도록 input 위쪽으로 표시
         let dd = document.getElementById('tvImgSearchAcDropdown');
         if (!dd) {
             dd = document.createElement('div');
             dd.id = 'tvImgSearchAcDropdown';
-            dd.style.cssText = `display:none; position:absolute; bottom:calc(100% + 4px); top:auto; left:0; right:0;
-                background:white; border:1px solid var(--border); border-radius:12px;
-                box-shadow:0 -4px 20px rgba(26,39,68,0.14); z-index:9999; max-height:200px;
-                overflow-y:auto;`;
-            newInput.parentElement.style.position = 'relative';
-            newInput.parentElement.appendChild(dd);
-        }
-        _tvImgSearchAcDropdown = dd;
-
-        if (!window.google) return;
-        if (!_tvImgSearchAcService) {
-            _tvImgSearchAcService = new google.maps.places.AutocompleteService();
+            dd.style.cssText = 'display:none;position:absolute;bottom:calc(100% + 4px);top:auto;left:0;right:0;' +
+                'background:white;border:1px solid var(--border);border-radius:14px;' +
+                'box-shadow:0 -4px 24px rgba(26,39,68,0.14);z-index:9999;max-height:220px;overflow-y:auto;';
+            input.parentElement.style.position = 'relative';
+            input.parentElement.appendChild(dd);
         }
 
-        newInput.addEventListener('input', () => {
+        input.addEventListener('input', () => {
             clearTimeout(_tvImgSearchAcDebounce);
-            const q = newInput.value.trim();
+            const q = input.value.trim();
             if (!q) { dd.style.display = 'none'; return; }
             _tvImgSearchAcDebounce = setTimeout(() => {
                 _tvImgSearchAcService.getPlacePredictions(
@@ -5388,22 +5377,21 @@
                         }
                         preds.slice(0, 5).forEach(pred => {
                             const item = document.createElement('div');
-                            item.style.cssText = `padding:10px 14px; cursor:pointer; font-size:0.83rem;
-                                border-bottom:1px solid #F1F5F9; display:flex; align-items:flex-start; gap:8px;`;
-                            item.innerHTML = `<span style="color:var(--text-muted);flex-shrink:0;margin-top:1px;">📍</span>
-                                <div>
-                                    <div style="font-weight:700;color:var(--navy);">${pred.structured_formatting.main_text}</div>
-                                    <div style="font-size:0.7rem;color:var(--text-muted);">${pred.structured_formatting.secondary_text||''}</div>
-                                </div>`;
-                            item.addEventListener('mouseenter', () => item.style.background='#F0F4FF');
-                            item.addEventListener('mouseleave', () => item.style.background='white');
-                            item.addEventListener('touchstart', () => item.style.background='#F0F4FF', {passive:true});
-                            item.addEventListener('touchend',   () => item.style.background='white', {passive:true});
+                            item.style.cssText = 'padding:11px 14px;cursor:pointer;font-size:0.85rem;' +
+                                'border-bottom:1px solid #F1F5F9;display:flex;align-items:flex-start;gap:8px;';
+                            item.innerHTML = '<span style="color:var(--text-muted);flex-shrink:0;margin-top:1px;">\u{1F4CD}</span>' +
+                                '<div>' +
+                                '<div style="font-weight:700;color:var(--navy);">' + pred.structured_formatting.main_text + '</div>' +
+                                '<div style="font-size:0.72rem;color:var(--text-muted);">' + (pred.structured_formatting.secondary_text||'') + '</div>' +
+                                '</div>';
+                            item.addEventListener('mouseenter', () => item.style.background = '#F0F4FF');
+                            item.addEventListener('mouseleave', () => item.style.background = 'white');
+                            item.addEventListener('touchstart', () => item.style.background = '#F0F4FF', {passive:true});
+                            item.addEventListener('touchend',   () => item.style.background = 'white',   {passive:true});
                             item.addEventListener('click', () => {
-                                newInput.value = pred.structured_formatting.main_text;
+                                input.value = pred.structured_formatting.main_text;
                                 dd.style.display = 'none';
                                 dd.innerHTML = '';
-                                // 장소명 선택 즉시 Unsplash 검색 자동 실행
                                 setTimeout(() => tvImgSearchUnsplash(), 100);
                             });
                             dd.appendChild(item);
@@ -5416,7 +5404,7 @@
 
         // 외부 클릭 시 닫기
         document.addEventListener('click', (e) => {
-            if (dd && !newInput.contains(e.target) && !dd.contains(e.target)) {
+            if (dd && !input.contains(e.target) && !dd.contains(e.target)) {
                 dd.style.display = 'none';
             }
         });
@@ -5425,9 +5413,7 @@
     let _tvImgSelectedUrl = ''; // 현재 선택된 URL (검색/업로드/URL 공통)
 
     async function tvImgSearchUnsplash() {
-        // cloneNode 후에도 id가 같으므로 querySelector로 안전하게 참조
-        const searchEl = document.getElementById('tvImgSearchInput') ||
-                         document.querySelector('#imgAreaSearch input[type=text]');
+        const searchEl = document.getElementById('tvImgSearchInput');
         const q = searchEl ? searchEl.value.trim() : '';
         if (!q) { tpToast('검색어를 입력해주세요.', 'warning'); return; }
 
@@ -5557,79 +5543,6 @@
                 }
             });
 
-    // ── Unsplash 검색창 Google Places 자동완성 ──
-    let _imgSearchAcService = null;
-    let _imgSearchDebounce  = null;
-
-    function initImgSearchAutocomplete() {
-        const input = document.getElementById('tvImgSearchInput');
-        if (!input || _imgSearchAcService) return;
-        if (!window.google || !google.maps || !google.maps.places) return;
-
-        _imgSearchAcService = new google.maps.places.AutocompleteService();
-
-        // 드롭다운 생성
-        let dd = document.getElementById('tvImgSearchDropdown');
-        if (!dd) {
-            dd = document.createElement('div');
-            dd.id = 'tvImgSearchDropdown';
-            dd.style.cssText = [
-                'display:none','position:absolute','bottom:calc(100% + 3px)','top:auto',
-                'left:0','right:0','background:white',
-                'border:1.5px solid var(--border)','border-radius:12px',
-                'box-shadow:0 -4px 24px rgba(26,39,68,0.14)',
-                'z-index:10000','max-height:210px','overflow-y:auto'
-            ].join(';');
-            input.parentElement.style.position = 'relative';
-            input.parentElement.appendChild(dd);
-        }
-
-        input.addEventListener('input', () => {
-            clearTimeout(_imgSearchDebounce);
-            const q = input.value.trim();
-            if (!q || q.length < 2) { dd.style.display = 'none'; return; }
-            _imgSearchDebounce = setTimeout(() => {
-                _imgSearchAcService.getPlacePredictions(
-                    { input: q, language: 'en' },
-                    (preds, status) => {
-                        dd.innerHTML = '';
-                        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds) {
-                            dd.style.display = 'none'; return;
-                        }
-                        preds.slice(0, 5).forEach(pred => {
-                            const div = document.createElement('div');
-                            div.style.cssText = 'padding:10px 14px;cursor:pointer;font-size:0.82rem;border-bottom:1px solid #F1F5F9;display:flex;align-items:center;gap:8px;';
-                            div.innerHTML = `<span style="color:var(--text-muted);flex-shrink:0;">📍</span>
-                                <div>
-                                    <div style="font-weight:700;color:var(--navy);">${pred.structured_formatting.main_text}</div>
-                                    <div style="font-size:0.7rem;color:var(--text-muted);">${pred.structured_formatting.secondary_text||''}</div>
-                                </div>`;
-                            div.addEventListener('mouseenter', ()=> div.style.background='#F0F4FF');
-                            div.addEventListener('mouseleave', ()=> div.style.background='white');
-                            div.addEventListener('touchstart',()=> div.style.background='#F0F4FF',{passive:true});
-                            div.addEventListener('touchend',  ()=> div.style.background='white',  {passive:true});
-                            div.addEventListener('click', () => {
-                                input.value = pred.structured_formatting.main_text;
-                                dd.style.display = 'none';
-                                dd.innerHTML = '';
-                                // 선택 즉시 Unsplash 검색 실행
-                                tvImgSearchUnsplash();
-                            });
-                            dd.appendChild(div);
-                        });
-                        dd.style.display = 'block';
-                    }
-                );
-            }, 300);
-        });
-
-        // 외부 클릭 시 닫기
-        document.addEventListener('click', (e) => {
-            if (dd && !input.contains(e.target) && !dd.contains(e.target)) {
-                dd.style.display = 'none';
-            }
-        });
-    }
         }
     });
 
