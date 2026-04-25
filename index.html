@@ -6202,13 +6202,12 @@
         msg.textContent = '';
 
         try {
-            // 현재 여행 데이터 수집
             const tripMeta = trips.find(t => t.id === currentTripId) || trips[0];
-            if (!tripMeta) { throw new Error('여행 데이터가 없습니다.'); }
+            if (!tripMeta) throw new Error('여행 데이터가 없습니다.');
 
             const rawData = await idbGet(IDB_STORE_TRIPS, tripMeta.id) ||
                 JSON.parse(localStorage.getItem(`trip_data_${tripMeta.id}`) || 'null');
-            if (!rawData) { throw new Error('저장된 여행 데이터가 없습니다.'); }
+            if (!rawData) throw new Error('저장된 여행 데이터가 없습니다.');
 
             // 옵션에 따라 민감 정보 제거
             const shareData = JSON.parse(JSON.stringify(rawData));
@@ -6227,29 +6226,30 @@
                 }
             }
 
-            // REST API 직접 호출 (schema cache 우회)
-            const _insertRes = await fetch(`${SUPABASE_URL}/rest/v1/shared_trips`, {
-                method: 'POST',
-                headers: {
-                    'apikey':        SUPABASE_ANON,
-                    'Authorization': `Bearer ${(await supabaseClient.auth.getSession()).data.session.access_token}`,
-                    'Content-Type':  'application/json',
-                    'Prefer':        'return=representation'
-                },
-                body: JSON.stringify({
-                    trip_id:  tripMeta.id,
-                    owner_id: supabaseUser.id,
-                    title:    tripMeta.name || '여행 계획',
-                    data:     shareData
-                })
-            });
-            if (!_insertRes.ok) {
-                const _errBody = await _insertRes.text();
-                throw new Error(_errBody);
-            }
-            const _inserted = await _insertRes.json();
-            const shareId = Array.isArray(_inserted) ? _inserted[0].id : _inserted.id;
-            const shareUrl = `${location.origin}${location.pathname}?share=${shareId}`;
+            // ── 기존 trip_data 테이블 활용 ──
+            // 공유용 특수 user_id: "shared__<uuid>" 로 저장
+            const shareId  = 'share_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            const shareUserId = 'shared__' + supabaseUser.id; // 공유 전용 식별자
+
+            // trip_index에 공유 trip 등록
+            const shareTrip = { id: shareId, name: tripMeta.name || '여행 계획', shared: true };
+            const { error: idxErr } = await supabaseClient.from('trip_index').upsert({
+                user_id:    shareUserId,
+                trip_index: JSON.stringify([shareTrip]),
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' });
+            if (idxErr) throw idxErr;
+
+            // trip_data에 공유 데이터 저장
+            const { error: dataErr } = await supabaseClient.from('trip_data').upsert({
+                user_id:    shareUserId,
+                trip_id:    shareId,
+                data:       JSON.stringify({ ...shareData, _shareTitle: tripMeta.name || '여행 계획' }),
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id,trip_id' });
+            if (dataErr) throw dataErr;
+
+            const shareUrl = `${location.origin}${location.pathname}?share=${shareId}&su=${encodeURIComponent(shareUserId)}`;
             document.getElementById('shareLinkInput').value = shareUrl;
             document.getElementById('shareLinkWrap').style.display = 'block';
             msg.style.color = '#10b981';
@@ -6287,14 +6287,17 @@
         if (!shareId || !supabaseClient) return false;
 
         try {
-            // REST API 직접 호출 (schema cache 우회)
-            const _selRes = await fetch(
-                `${SUPABASE_URL}/rest/v1/shared_trips?id=eq.${shareId}&select=title,data`,
-                { headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` } }
-            );
-            const _selArr = await _selRes.json();
-            const data  = (_selArr && _selArr[0]) ? _selArr[0] : null;
-            const error = (!data) ? { message: '데이터 없음' } : null;
+            // 기존 trip_data 테이블에서 공유 데이터 조회
+            const params = new URLSearchParams(location.search);
+            const shareUserId = decodeURIComponent(params.get('su') || '');
+            if (!shareUserId) { tpToast('잘못된 공유 링크입니다.', 'warning'); return false; }
+
+            const { data: td, error } = await supabaseClient.from('trip_data')
+                .select('data')
+                .eq('user_id', shareUserId)
+                .eq('trip_id', shareId)
+                .single();
+            const data = td ? { title: JSON.parse(td.data)._shareTitle || '공유된 여행', data: JSON.parse(td.data) } : null;
             if (error || !data) {
                 tpToast('공유된 여행을 찾을 수 없습니다.', 'warning'); return false;
             }
