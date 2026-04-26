@@ -5392,9 +5392,6 @@
         document.getElementById('tvImgEditModal').classList.add('active');
         history.pushState({ tvImgEdit: true }, '');
 
-        // 검색창 자동완성 초기화 (한 번만)
-        setTimeout(initImgSearchAutocomplete, 150);
-
         // 파일 업로드 핸들러 (중복 방지)
         const fileInput = document.getElementById('tvImgFileInput');
         if (fileInput) {
@@ -5423,16 +5420,16 @@
     // Unsplash 검색창에 Places 자동완성 연결
     let _tvImgSearchAcService  = null;
     let _tvImgSearchAcDebounce = null;
-    let _tvImgSearchAcInited   = false;
 
     function initTvImgSearchAutocomplete() {
-        if (_tvImgSearchAcInited) return;   // 중복 초기화 방지
         const input = document.getElementById('tvImgSearchInput');
         if (!input) return;
         if (!window.google || !google.maps || !google.maps.places) return;
 
-        _tvImgSearchAcInited  = true;
-        _tvImgSearchAcService = new google.maps.places.AutocompleteService();
+        // AutocompleteService는 한 번만 생성
+        if (!_tvImgSearchAcService) {
+            _tvImgSearchAcService = new google.maps.places.AutocompleteService();
+        }
 
         // 드롭다운 생성 - 입력창 위쪽으로 표시 (키보드에 안 가려짐)
         let dd = document.getElementById('tvImgSearchAcDropdown');
@@ -5451,8 +5448,9 @@
             input.parentElement.appendChild(dd);
         }
 
-        // input 이벤트 - cloneNode 없이 원본에 직접 바인딩
-        input.addEventListener('input', () => {
+        // input 이벤트 - 중복 방지 후 등록
+        input.removeEventListener('input', input._tvAcHandler);
+        input._tvAcHandler = () => {
             clearTimeout(_tvImgSearchAcDebounce);
             const q = input.value.trim();
             if (!q) { dd.style.display = 'none'; return; }
@@ -5489,14 +5487,19 @@
                     }
                 );
             }, 280);
-        });
+        };
+        input.addEventListener('input', input._tvAcHandler);
 
-        // 외부 클릭 시 닫기
-        document.addEventListener('click', (e) => {
-            if (dd && !input.contains(e.target) && !dd.contains(e.target)) {
-                dd.style.display = 'none';
-            }
-        });
+        // 외부 클릭 시 닫기 (한 번만)
+        if (!input._tvAcClickBound) {
+            input._tvAcClickBound = true;
+            document.addEventListener('click', (e) => {
+                const dd2 = document.getElementById('tvImgSearchAcDropdown');
+                if (dd2 && !input.contains(e.target) && !dd2.contains(e.target)) {
+                    dd2.style.display = 'none';
+                }
+            });
+        }
     }
 
     let _tvImgSelectedUrl = ''; // 현재 선택된 URL (검색/업로드/URL 공통)
