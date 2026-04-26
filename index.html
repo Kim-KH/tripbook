@@ -2803,7 +2803,7 @@
             let color = cityName ? getCityColor(cityName) : null;
             let prevColor = prevCityName ? getCityColor(prevCityName) : null;
 
-            th.innerHTML = `<div style="font-weight:800;">${daysOfWeek[curDate.getDay()]}</div><div style="font-size:0.62rem;font-weight:400;color:var(--text-sub);margin-top:1px;">${curDate.getMonth()+1}/${curDate.getDate()}</div>`;
+            th.innerHTML = `<div style="font-weight:800;">${daysOfWeek[curDate.getDay()]}</div><div style="font-size:0.75rem;font-weight:700;color:var(--navy);margin-top:2px;">${curDate.getMonth()+1}/${curDate.getDate()}</div>`;
             
             // === [수정] 상단 헤더 바도 대각선으로 처리 ===
             if (cityName && prevCityName && cityName !== prevCityName) {
@@ -5043,7 +5043,7 @@
         if (!document.getElementById('tvAddDropdown')) {
             const dd = document.createElement('div');
             dd.id = 'tvAddDropdown';
-            dd.style.cssText = 'display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:white;border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(26,39,68,0.14);z-index:9999;max-height:220px;overflow-y:auto;';
+            dd.style.cssText = 'display:none;position:absolute;bottom:calc(100% + 4px);top:auto;left:0;right:0;background:white;border:1px solid var(--border);border-radius:14px;box-shadow:0 -4px 24px rgba(26,39,68,0.14);z-index:9999;max-height:220px;overflow-y:auto;';
             input.parentElement.style.position = 'relative';
             input.parentElement.appendChild(dd);
         }
@@ -5438,10 +5438,7 @@
         if (!dd) {
             dd = document.createElement('div');
             dd.id = 'tvImgSearchAcDropdown';
-            dd.style.cssText = `display:none; position:absolute; top:calc(100% + 4px); left:0; right:0;
-                background:white; border:1px solid var(--border); border-radius:12px;
-                box-shadow:0 8px 20px rgba(26,39,68,0.14); z-index:9999; max-height:200px;
-                overflow-y:auto;`;
+            dd.style.cssText = 'display:none;position:absolute;bottom:calc(100% + 4px);top:auto;left:0;right:0;background:white;border:1px solid var(--border);border-radius:12px;box-shadow:0 -4px 20px rgba(26,39,68,0.14);z-index:9999;max-height:200px;overflow-y:auto;';
             newInput.parentElement.style.position = 'relative';
             newInput.parentElement.appendChild(dd);
         }
@@ -5652,7 +5649,7 @@
             dd = document.createElement('div');
             dd.id = 'tvImgSearchDropdown';
             dd.style.cssText = [
-                'display:none','position:absolute','top:calc(100% + 3px)',
+                'display:none','position:absolute','bottom:calc(100% + 3px)','top:auto',
                 'left:0','right:0','background:white',
                 'border:1.5px solid var(--border)','border-radius:12px',
                 'box-shadow:0 8px 24px rgba(26,39,68,0.14)',
