@@ -6346,12 +6346,29 @@
             if (error || !data) {
                 tpToast('공유된 여행을 찾을 수 없습니다.', 'warning'); return false;
             }
-            // 읽기전용 배너 표시
+            // 공유 데이터를 전역에 저장 (복사 버튼에서 사용)
+            window._sharedTripData  = data.data;
+            window._sharedTripTitle = data.title;
+
+            // 배너 표시 - 로그인 여부에 따라 버튼 다르게
             const banner = document.createElement('div');
-            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#10b981,#059669);color:white;text-align:center;padding:10px 16px;font-size:0.85rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;';
-            banner.innerHTML = `<span>🔗 공유된 여행 계획 보기: <strong>${data.title}</strong></span><button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,0.25);border:none;color:white;padding:4px 10px;border-radius:8px;cursor:pointer;font-weight:700;">✕</button>`;
+            banner.id = 'sharedViewBanner';
+            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;' +
+                'background:linear-gradient(135deg,#10b981,#059669);color:white;' +
+                'padding:10px 16px;font-size:0.85rem;font-weight:700;' +
+                'display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;';
+            banner.innerHTML =
+                `<span>🔗 공유된 여행: <strong>${data.title}</strong></span>` +
+                `<button id="copySharedTripBtn" onclick="copySharedTrip()" ` +
+                `style="background:white;color:#059669;border:none;padding:6px 14px;` +
+                `border-radius:20px;cursor:pointer;font-weight:800;font-size:0.82rem;white-space:nowrap;">` +
+                `✈️ 내 여행으로 복사</button>` +
+                `<button onclick="document.getElementById('sharedViewBanner').style.display='none'" ` +
+                `style="background:rgba(255,255,255,0.25);border:none;color:white;` +
+                `padding:4px 10px;border-radius:8px;cursor:pointer;font-weight:700;">✕</button>`;
             document.body.prepend(banner);
-            // 공유 데이터를 임시 여행으로 로드
+
+            // 공유 데이터를 임시 여행으로 로드 (읽기 전용 뷰)
             const sharedTrip = { id: 'shared_view', name: data.title };
             const existIdx = trips.findIndex(t => t.id === 'shared_view');
             if (existIdx >= 0) trips[existIdx] = sharedTrip; else trips.unshift(sharedTrip);
@@ -6363,6 +6380,68 @@
             return true;
         } catch(e) {
             console.warn('공유 뷰 로드 실패:', e); return false;
+        }
+    }
+
+
+    // ── 공유된 여행을 내 계정으로 복사 ──
+    async function copySharedTrip() {
+        if (!supabaseUser) {
+            tpToast('복사하려면 로그인이 필요합니다.', 'warning');
+            document.getElementById('loginModal').classList.add('active');
+            return;
+        }
+        if (!window._sharedTripData) {
+            tpToast('복사할 여행 데이터가 없습니다.', 'warning'); return;
+        }
+
+        const btn = document.getElementById('copySharedTripBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 복사 중...'; }
+
+        try {
+            const newTripId   = 'trip_' + Date.now();
+            const newTripName = (window._sharedTripTitle || '공유된 여행') + ' (복사본)';
+            const newTripData = { ...window._sharedTripData, id: newTripId };
+
+            // IndexedDB에 저장
+            await idbSet(IDB_STORE_TRIPS, newTripData);
+
+            // trips 목록에 추가
+            const newTrip = { id: newTripId, name: newTripName, updated: Date.now() };
+            trips.push(newTrip);
+
+            // Supabase에 동기화
+            if (supabaseClient && supabaseUser) {
+                await supabaseClient.from('trip_data').upsert({
+                    user_id:    supabaseUser.id,
+                    trip_id:    newTripId,
+                    data:       JSON.stringify(newTripData),
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id,trip_id' });
+
+                await supabaseClient.from('trip_index').upsert({
+                    user_id:    supabaseUser.id,
+                    trip_index: JSON.stringify(trips.filter(t => t.id !== 'shared_view')),
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id' });
+            }
+
+            // 복사본으로 전환
+            currentTripId = newTripId;
+            await loadTripData(newTripId);
+            renderCalendar();
+
+            // 배너 제거 + URL 정리
+            const banner = document.getElementById('sharedViewBanner');
+            if (banner) banner.remove();
+            history.replaceState({}, '', location.pathname);
+
+            tpToast(`✅ "${newTripName}"으로 복사되었습니다! 이제 자유롭게 편집하세요.`, 'success', 4000);
+
+        } catch(e) {
+            console.error('복사 실패:', e);
+            tpToast('복사 중 오류가 발생했습니다: ' + e.message, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = '✈️ 내 여행으로 복사'; }
         }
     }
 
