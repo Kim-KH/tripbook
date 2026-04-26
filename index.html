@@ -1693,6 +1693,15 @@
 
         <!-- 경로 탐색 버튼 행 -->
         <div id="mapRouteRow" style="display:flex; gap:8px; margin-bottom:6px; flex-shrink:0; align-items:center; flex-wrap:wrap;">
+            <!-- 📅일정 / 📍장소 토글 -->
+            <div style="display:flex; border:1.5px solid var(--border); border-radius:20px; overflow:hidden; flex-shrink:0;">
+                <button id="mapRouteTypeSchedule"
+                    style="padding:7px 13px; border:none; font-size:0.8rem; font-weight:700; cursor:pointer;
+                           background:#2563EB; color:white; white-space:nowrap;">📅 일정</button>
+                <button id="mapRouteTypePlace"
+                    style="padding:7px 13px; border:none; font-size:0.8rem; font-weight:700; cursor:pointer;
+                           background:white; color:#64748b; white-space:nowrap;">📍 장소</button>
+            </div>
             <button id="mapRouteBtn" style="padding:7px 16px; border-radius:20px; border:none; font-size:0.82rem; font-weight:700; cursor:pointer; background:#10b981; color:white; white-space:nowrap;">🚗 경로·소요시간</button>
             <select id="mapTravelMode" style="padding:7px 14px; border:1.5px solid var(--border); border-radius:16px; font-size:0.82rem; font-weight:700; color:var(--navy); background:white; cursor:pointer; font-family:inherit;">
                 <option value="DRIVING">🚗 자동차</option>
@@ -6072,7 +6081,10 @@
         _directionsService  = new google.maps.DirectionsService();
         _directionsRenderer = new google.maps.DirectionsRenderer({
             suppressMarkers: false,
-            polylineOptions: { strokeColor: '#10b981', strokeWeight: 5, strokeOpacity: 0.85 }
+            polylineOptions: {
+                strokeColor: _mapRouteType === 'blue' ? '#2563EB' : '#E53E3E',
+                strokeWeight: 5, strokeOpacity: 0.85
+            }
         });
     }
 
@@ -6082,27 +6094,42 @@
         document.getElementById('mapRouteClearBtn').style.display = 'none';
     }
 
+    // 경로 타입 토글 상태 ('blue'=일정, 'red'=장소)
+    let _mapRouteType = 'blue';
+
+    function setMapRouteType(type) {
+        _mapRouteType = type;
+        const btnS = document.getElementById('mapRouteTypeSchedule');
+        const btnP = document.getElementById('mapRouteTypePlace');
+        if (type === 'blue') {
+            btnS.style.background = '#2563EB'; btnS.style.color = 'white';
+            btnP.style.background = 'white';   btnP.style.color = '#64748b';
+        } else {
+            btnP.style.background = '#E53E3E'; btnP.style.color = 'white';
+            btnS.style.background = 'white';   btnS.style.color = '#64748b';
+        }
+    }
+
     function calcRoute() {
         initDirectionsServices();
-        // 현재 필터된 포인트에서 redPoints(장소/숙소) 순서대로 경로 계산
         const cityVal = (document.getElementById('mapCitySelect').value || '').trim();
         const dateVal = (document.getElementById('mapDateSelect').value || '').trim();
         const mode    = document.getElementById('mapTravelMode').value;
 
-        // allMapPoints는 showTotalMap에서 세팅한 전역 변수 활용
         if (!window._allMapPoints || window._allMapPoints.length === 0) {
             tpToast('지도에 표시된 장소가 없습니다.', 'warning'); return;
         }
-        let pts = window._allMapPoints.filter(p => p.type === 'red');
-        // city 필터: 빈 문자열이면 전체, 값이 있으면 해당 도시만
+
+        // 토글 상태에 따라 blue(일정) 또는 red(장소/숙소) 필터
+        let pts = window._allMapPoints.filter(p => p.type === _mapRouteType);
         if (cityVal) pts = pts.filter(p => p.city === cityVal);
-        // date 필터: 빈 문자열이면 전체, 값이 있으면 해당 날짜만
         if (dateVal) pts = pts.filter(p => p.date.toLocaleDateString('ko-KR') === dateVal);
 
+        const typeName = _mapRouteType === 'blue' ? '📅 일정' : '📍 장소';
         if (pts.length < 2) {
-            const hint = (!cityVal && !dateVal) ? '도시와 날짜를 선택해주세요.' :
-                         (!dateVal) ? '날짜를 선택하거나 장소를 2개 이상 등록해주세요.' :
-                         '선택한 날짜에 장소가 2개 이상 필요합니다.';
+            const hint = (!cityVal && !dateVal) ? `도시와 날짜를 선택해주세요.` :
+                         (!dateVal) ? `날짜를 선택해주세요.` :
+                         `선택한 날짜에 ${typeName} 포인트가 2개 이상 필요합니다.`;
             tpToast(hint, 'warning'); return;
         }
         if (pts.length > 25) {
@@ -6114,7 +6141,12 @@
         const waypoints   = pts.slice(1, -1).map(p => ({ location: p.pos, stopover: true }));
 
         const panel = document.getElementById('mapRoutePanel');
-        panel.innerHTML = '<div style="color:#10b981; font-weight:700;">🔍 경로 계산 중...</div>';
+        const panelColor = _mapRouteType === 'blue' ? '#2563EB' : '#E53E3E';
+        const panelBg    = _mapRouteType === 'blue' ? '#eff6ff' : '#fff5f5';
+        const panelBd    = _mapRouteType === 'blue' ? '#bfdbfe' : '#fecaca';
+        panel.style.background  = panelBg;
+        panel.style.borderColor = panelBd;
+        panel.innerHTML = `<div style="color:${panelColor}; font-weight:700;">🔍 경로 계산 중...</div>`;
         panel.style.display = 'block';
 
         _directionsService.route({
@@ -6160,6 +6192,8 @@
 
     // 경로 버튼 이벤트 (지도 모달 열릴 때 한 번만 바인딩)
     (function bindRouteEvents() {
+        document.getElementById('mapRouteTypeSchedule').addEventListener('click', () => setMapRouteType('blue'));
+        document.getElementById('mapRouteTypePlace').addEventListener('click',    () => setMapRouteType('red'));
         document.getElementById('mapRouteBtn').addEventListener('click', calcRoute);
         document.getElementById('mapRouteClearBtn').addEventListener('click', () => {
             clearRouteOverlay();
