@@ -6094,11 +6094,16 @@
             tpToast('지도에 표시된 장소가 없습니다.', 'warning'); return;
         }
         let pts = window._allMapPoints.filter(p => p.type === 'red');
-        if (cityVal && cityVal !== '전체') pts = pts.filter(p => p.city === cityVal);
-        if (dateVal && dateVal !== '전체') pts = pts.filter(p => p.date.toLocaleDateString('ko-KR') === dateVal);
+        // city 필터: 빈 문자열이면 전체, 값이 있으면 해당 도시만
+        if (cityVal) pts = pts.filter(p => p.city === cityVal);
+        // date 필터: 빈 문자열이면 전체, 값이 있으면 해당 날짜만
+        if (dateVal) pts = pts.filter(p => p.date.toLocaleDateString('ko-KR') === dateVal);
 
         if (pts.length < 2) {
-            tpToast('경로 계산을 위해 날짜를 선택하거나 장소를 2개 이상 등록해주세요.', 'warning'); return;
+            const hint = (!cityVal && !dateVal) ? '도시와 날짜를 선택해주세요.' :
+                         (!dateVal) ? '날짜를 선택하거나 장소를 2개 이상 등록해주세요.' :
+                         '선택한 날짜에 장소가 2개 이상 필요합니다.';
+            tpToast(hint, 'warning'); return;
         }
         if (pts.length > 25) {
             tpToast('경유지가 너무 많습니다. 날짜 필터로 줄여주세요.', 'warning'); return;
