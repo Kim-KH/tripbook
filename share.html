@@ -315,7 +315,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   try {
     const res  = await fetch(
-      `${SUPABASE_URL}/rest/v1/shared_trips?id=eq.${shareId}&select=id,title,data,expires_at,is_active&limit=1`,
+      `${SUPABASE_URL}/rest/v1/shared_trips?id=eq.${shareId}&select=*&limit=1`,
       { headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` } }
     );
     const arr  = await res.json();
