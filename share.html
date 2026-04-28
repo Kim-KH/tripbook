@@ -352,7 +352,7 @@ function handleViewOnly() {
 
 function handleOpenApp() {
   // 딥링크 시도 → 앱 없으면 스토어로 fallback
-  const deepLink = `tripbook://share/${shareId}`;
+  const deepLink = `tripbook://share?share=${shareId}`;
 
   // 앱 열기 시도
   window.location.href = deepLink;
