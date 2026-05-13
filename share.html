@@ -186,9 +186,22 @@
   .day-date {
     font-size: 0.9rem; font-weight: 700; color: var(--navy);
   }
+
+  /* ── 도시 배지 (핵심 변경) ── */
   .day-city {
-    font-size: 0.78rem; color: var(--sub);
     margin-left: auto;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px;
+    border-radius: 20px;
+    font-size: 0.78rem; font-weight: 800;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    /* color / background 는 JS에서 city.color 기반으로 인라인 설정 */
+  }
+  .day-city .city-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0;
+    /* background 는 JS에서 city.color로 설정 */
   }
 
   .cell-row {
@@ -288,8 +301,8 @@
 const SUPABASE_URL  = 'https://mtgxpqgnsjkcnskyhanr.supabase.co';
 const SUPABASE_ANON = 'sb_publishable_3mhHppJF6alLY-rYr-SNPQ_lqUqZQpD';
 
-const DAYS   = ['일','월','화','수','목','금','토'];
-const CATS   = [
+const DAYS = ['일','월','화','수','목','금','토'];
+const CATS = [
   { key: 'schedule',  emoji: '📅', label: '일정' },
   { key: 'place',     emoji: '📍', label: '장소' },
   { key: 'stay',      emoji: '🏨', label: '숙소' },
@@ -299,8 +312,31 @@ const CATS   = [
   { key: 'shopping',  emoji: '🛍️', label: '쇼핑' },
 ];
 
-let tripData  = null;
-let shareId   = null;
+// 도시 색상 팔레트 - city.color가 없을 때 순서대로 사용
+const CITY_PALETTE = [
+  '#FF6B35', '#3B82F6', '#10B981', '#8B5CF6',
+  '#F59E0B', '#EF4444', '#06B6D4', '#EC4899',
+];
+
+// hex → rgba 변환 (배경 투명도용)
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// 도시별 색상 맵 빌드 (city.color 우선, 없으면 팔레트)
+function buildCityColorMap(cities) {
+  const map = {};
+  (cities || []).forEach((city, i) => {
+    map[city.name] = city.color || CITY_PALETTE[i % CITY_PALETTE.length];
+  });
+  return map;
+}
+
+let tripData = null;
+let shareId  = null;
 
 // ── 초기화 ──────────────────────────────────────────────────────────────────
 
@@ -308,25 +344,21 @@ window.addEventListener('DOMContentLoaded', async () => {
   const params = new URLSearchParams(location.search);
   shareId = params.get('share');
 
-  if (!shareId) {
-    showError();
-    return;
-  }
+  if (!shareId) { showError(); return; }
 
   try {
-    const res  = await fetch(
+    const res = await fetch(
       `${SUPABASE_URL}/rest/v1/shared_trips?id=eq.${shareId}&select=*&limit=1`,
       { headers: { 'apikey': SUPABASE_ANON, 'Authorization': `Bearer ${SUPABASE_ANON}` } }
     );
-    const arr  = await res.json();
-    const row  = arr && arr[0];
+    const arr = await res.json();
+    const row = arr && arr[0];
 
     if (!row || !row.is_active) { showError(); return; }
     if (row.expires_at && new Date(row.expires_at) < new Date()) { showError(); return; }
 
     tripData = row.data;
 
-    // 선택 화면 표시
     document.getElementById('choiceTripName').textContent = row.title || '공유된 여행';
     if (tripData?.startDate && tripData?.endDate) {
       document.getElementById('choiceTripDates').textContent =
@@ -351,13 +383,8 @@ function handleViewOnly() {
 }
 
 function handleOpenApp() {
-  // 딥링크 시도 → 앱 없으면 스토어로 fallback
   const deepLink = `tripbook://share?share=${shareId}`;
-
-  // 앱 열기 시도
   window.location.href = deepLink;
-
-  // 1.5초 후 앱이 안 열렸으면 스토어로
   setTimeout(() => {
     const isAndroid = /android/i.test(navigator.userAgent);
     const isIOS     = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -366,7 +393,6 @@ function handleOpenApp() {
     } else if (isIOS) {
       window.location.href = 'https://apps.apple.com/app/tripbook/id000000000';
     } else {
-      // 데스크탑: 보기만으로 fallback
       handleViewOnly();
     }
   }, 1500);
@@ -383,17 +409,22 @@ function renderViewer() {
       `${tripData.startDate} ~ ${tripData.endDate}`;
   }
 
+  // 도시 색상 맵 빌드
+  const cityColorMap = buildCityColorMap(tripData.cities);
+
   const dates = getTripDates(tripData.startDate, tripData.endDate);
   const container = document.getElementById('viewerContent');
   container.innerHTML = '';
 
   dates.forEach((dateStr, dayIdx) => {
-    const d      = parseLocalDate(dateStr);
-    const dayLabel = `Day${dayIdx + 1}`;
+    const d         = parseLocalDate(dateStr);
+    const dayLabel  = `Day${dayIdx + 1}`;
     const dateLabel = `${d.getMonth()+1}/${d.getDate()}(${DAYS[d.getDay()]})`;
 
     // 이 날의 도시
-    const city = (tripData.cities || []).find(c => c.startDate <= dateStr && c.endDate >= dateStr);
+    const city = (tripData.cities || []).find(
+      c => c.startDate <= dateStr && c.endDate >= dateStr
+    );
 
     // 이 날의 셀들
     const cells = [];
@@ -406,12 +437,24 @@ function renderViewer() {
     const section = document.createElement('div');
     section.className = 'day-section';
 
+    // 도시 배지 HTML - city.color 기반 인라인 스타일
+    let cityBadgeHtml = '';
+    if (city) {
+      const color = cityColorMap[city.name] || '#64748B';
+      const bgColor = hexToRgba(color, 0.12);
+      cityBadgeHtml = `
+        <span class="day-city" style="background:${bgColor}; color:${color};">
+          <span class="city-dot" style="background:${color};"></span>
+          ${escHtml(city.name)}
+        </span>`;
+    }
+
     // 헤더
     section.innerHTML = `
       <div class="day-header">
         <span class="day-badge">${dayLabel}</span>
         <span class="day-date">${dateLabel}</span>
-        ${city ? `<span class="day-city">🏙️ ${city.name}</span>` : ''}
+        ${cityBadgeHtml}
       </div>
     `;
 
@@ -492,8 +535,10 @@ function escHtml(str) {
 }
 
 function show(id) { document.getElementById(id).classList.add('show'); }
-function hide(id) { document.getElementById(id).classList.remove('show');
-                    document.getElementById(id).style.display = 'none'; }
+function hide(id) {
+  document.getElementById(id).classList.remove('show');
+  document.getElementById(id).style.display = 'none';
+}
 function showError() {
   hide('loadingScreen');
   document.getElementById('errorScreen').style.display = 'flex';
